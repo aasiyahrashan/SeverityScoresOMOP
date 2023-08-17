@@ -4,7 +4,7 @@
 \alias{postgres_connect}
 \title{Create a connection object to uds.}
 \usage{
-postgres_connect(host, user, password)
+postgres_connect(host, dbname, port, user, password)
 }
 \arguments{
 \item{host}{postgres host}

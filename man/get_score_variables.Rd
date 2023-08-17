@@ -2,14 +2,15 @@
 % Please edit documentation in R/query_functions.R
 \name{get_score_variables}
 \alias{get_score_variables}
-\title{Queries the postgres database to get variables required for the severity score specified.
-Fixes the postgres timezone issue.}
+\title{Queries the postgres database to get variables required for the severity score specified.}
 \usage{
 get_score_variables(
   postgres_conn,
   schema,
   start_date,
   end_date,
+  min_day,
+  max_day,
   dataset_name,
   severity_score
 )
@@ -19,9 +20,13 @@ get_score_variables(
 
 \item{schema}{The name of the schema you want to query.}
 
-\item{start_date}{The date/datetime of the first admission. Needs to be in character format.}
+\item{start_date}{The earliest ICU admission date/datetime. Needs to be in character format.}
 
 \item{end_date}{As above, but for last date}
+
+\item{min_day}{The number of days since ICU admission to get physiology data for. Starts with 0}
+
+\item{max_day}{The number of days since ICU admision to get physiology data for.}
 
 \item{dataset_name}{Describes which concept codes to select. Can only be CCHIC at the moment.}
 
@@ -29,5 +34,4 @@ get_score_variables(
 }
 \description{
 Queries the postgres database to get variables required for the severity score specified.
-Fixes the postgres timezone issue.
 }
