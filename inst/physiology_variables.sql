@@ -1,18 +1,38 @@
+with icu_admission_details as (
+	--- We generally want ICU admission information.
+	--- But CCHIC doesn't have it, so we use hospital info.
+	select
+	p.person_id
+	, p.year_of_birth
+	, p.gender_concept_id
+	, vo.visit_occurrence_id
+	, vd.visit_detail_id
+	, COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) as icu_admission_datetime
+	from {schema}.person p
+	inner join {schema}.visit_occurrence vo
+	on p.person_id = vo.person_id
+	-- this should contain ICU stay information, if it exists at all
+	left join {schema}.visit_detail vd
+	on p.person_id = vd.person_id
+	where COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) >= '{start_date}'
+	and COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) < '{end_date}'
+
+)
 select
-vo.person_id
-, vo.visit_occurrence_id
-, vo.visit_start_datetime
-, DATE_PART('day', m.measurement_datetime - vo.visit_start_datetime) as days_in_icu
+adm.*
+, DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) as days_in_icu
 --- List of concept IDs to get the min/max of, along with names to assign them to.
 -- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
 {variables_required}
-from {schema}.visit_occurrence vo
+from icu_admission_details adm
 inner join {schema}.measurement m
-on vo.visit_occurrence_id = m.visit_occurrence_id
--- filter by date, and by the number of days after ICU admission
-and vo.visit_start_datetime >= '{start_date}' and vo.visit_start_datetime < '{end_date}'
-and DATE_PART('day', m.measurement_datetime - vo.visit_start_datetime) >= {min_day}
-and DATE_PART('day', m.measurement_datetime - vo.visit_start_datetime) < {max_day}
+on (adm.visit_detail_id = m.visit_detail_id or adm.visit_detail_id is null)
+and adm.visit_occurrence_id = m.visit_occurrence_id
+and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) >= {min_day}
+and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) < {max_day}
 -- want min or max values for each visit each day.
-GROUP BY vo.visit_occurrence_id, DATE_PART('day', m.measurement_datetime - vo.visit_start_datetime)
+GROUP BY adm.person_id, adm.year_of_birth, adm.gender_concept_id,
+         adm.visit_occurrence_id, adm.visit_detail_id,
+		 adm.icu_admission_datetime,
+		 DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime)
 
