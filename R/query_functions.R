@@ -63,3 +63,56 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
   data <- dbGetQuery(postgres_conn, raw_sql)
   as_tibble(data)
 }
+
+#' Convert units of measure into a format suitable for the APACHE II score calculation
+#' Assumes units of measure are encoded in OMOP using the UCUM source vocabulary
+#' Throws a warning if the unit of measure is not recognised. Assumes the default unit of measure if not available.
+#' @param data Dataframe containing physiology variables and units of measure.
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#'
+#' @return A data frame with the physiology values converted to the default units of measure specified.
+#' @import data.table
+apache_ii_units <- function(data){
+
+  data <- data.table(data)
+
+  #### Default unit for temperature is celsius
+  data[unit_temp <= 'degree Fahrenheit', (max_temp-32)*5/9]
+  data[unit_temp <= 'degree Fahrenheit', (min_temp-32)*5/9]
+
+  if(!all(unique(data$unit_temp) %in% c("degree Celsius", "degree Fahrenheit", NA))){
+    warning("Temperature contains an unknown unit of measure. Assuming values are in Celsius")
+  }
+
+  #### Default unit for white cell count is billion per liter
+  if(!all(unique(data$unit_wcc) %in% c("billion per liter", NA))){
+    warning("White cell count contains an unknown unit of measure. Assuming values are in billion per liter")
+  }
+
+  #### Default unit for fio2 is ratio
+  data[unit_fio2 <= 'percent', max_fio2/100]
+  data[unit_fio2 <= 'percent', min_fio2/100]
+
+  if(!all(unique(data$unit_fio2) %in% c("ratio", "percent", NA))){
+    warning("fio2 contains an unknown unit of measure. Assuming values are ratio")
+  }
+
+  #### Default unit for pao2 is millimeter mercury column
+  data[unit_pao2 <= 'kilopascal', max_pao2*7.50062]
+  data[unit_pao2 <= 'kilopascal', min_pao2*7.50062]
+
+  if(!all(unique(data$unit_pao2) %in% c("kilopascal", "millimeter mercury column", NA))){
+    warning("pao2 contains an unknown unit of measure. Assuming values are millimeter mercury column")
+  }
+
+  # #### Default unit for pao2 is millimeter mercury column
+  # data[unit_pao2 <= 'kilopascal', max_pao2*7.50062]
+  # data[unit_pao2 <= 'kilopascal', min_pao2*7.50062]
+  #
+  # if(!all(unique(data$unit_pao2) %in% c("kilopascal", "millimeter mercury column", NA))){
+  #   warning("pao2 contains an unknown unit of measure. Assuming values are millimeter mercury column")
+  # }
+
+
+  data
+}
