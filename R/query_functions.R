@@ -40,11 +40,14 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
     mutate(max_query = glue(
       ", MAX(CASE WHEN m.measurement_concept_id = {concept_id} then m.value_as_number END) AS max_{short_name}"),
       min_query = glue(
-        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then m.value_as_number END) AS min_{short_name}"))
+        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then m.value_as_number END) AS min_{short_name}"),
+      unit_query = glue(
+        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then c_unit.concept_name END) AS unit_{short_name}"))
 
   ## Collapsing all the queries into a string.
   variables_required <- glue(glue_collapse(concepts$max_query, sep = "\n"), "\n",
-                      glue_collapse(concepts$min_query, sep = "\n"))
+                      glue_collapse(concepts$min_query, sep = "\n"), "\n",
+                      glue_collapse(concepts$unit_query, sep = "\n"))
 
   #### Importing the rest of the query from the text file.
   raw_sql <- readr::read_file(system.file("physiology_variables.sql",
