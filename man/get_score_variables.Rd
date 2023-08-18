@@ -2,7 +2,8 @@
 % Please edit documentation in R/query_functions.R
 \name{get_score_variables}
 \alias{get_score_variables}
-\title{Queries the postgres database to get variables required for the severity score specified.}
+\title{Queries the postgres database to get variables required for the severity score specified.
+Uses visit detail as table containing ICU admission information. If not available, uses visit_occurrence.}
 \usage{
 get_score_variables(
   postgres_conn,
@@ -34,4 +35,5 @@ get_score_variables(
 }
 \description{
 Queries the postgres database to get variables required for the severity score specified.
+Uses visit detail as table containing ICU admission information. If not available, uses visit_occurrence.
 }
