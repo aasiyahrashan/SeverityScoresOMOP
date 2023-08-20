@@ -358,6 +358,7 @@ calculate_apache_ii_score <- function(data){
 
   #### GCS
   data[, gcs_ap_ii := 15- min_gcs]
+  data[is.na(gcs_ap_ii), gcs_ap_ii := 0]
 
   #### creatinine
   #### Assuming there's no renal failure
