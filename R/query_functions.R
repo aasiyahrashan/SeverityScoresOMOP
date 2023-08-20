@@ -39,9 +39,9 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
                           package = "SeverityScoresOMOP")) %>%
     filter(score == severity_score) %>%
     mutate(max_query = glue(
-      ", MAX(CASE WHEN m.measurement_concept_id = {concept_id} then m.value_as_number END) AS max_{short_name}"),
+      ", MAX(CASE WHEN m.measurement_concept_id = {concept_id} then m.{omop_variable} END) AS max_{short_name}"),
       min_query = glue(
-        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then m.value_as_number END) AS min_{short_name}"),
+        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then m.{omop_variable} END) AS min_{short_name}"),
       unit_query = glue(
         ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then c_unit.concept_name END) AS unit_{short_name}"))
 
@@ -59,6 +59,8 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
          min_day = min_day,
          max_day = max_day,
          variables_required = variables_required)
+
+  print(raw_sql)
 
 #### Running the query
   data <- dbGetQuery(postgres_conn, raw_sql)

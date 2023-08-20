@@ -3,7 +3,11 @@ with icu_admission_details as (
 	--- But CCHIC doesn't have it, so we use hospital info.
 	select
 	p.person_id
-	, DATE_PART('year', COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) - p.birth_datetime) as age
+	--- Some databases don't have month/day of birth. Others don't have birth datetime.
+	--- Imputing DOB as the middle of the year if no further information is available.
+	, DATE_PART('year', COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime)) -
+	DATE_PART('year', COALESCE(p.birth_datetime,
+	make_date(p.year_of_birth, coalesce(p.month_of_birth, '06'), coalesce(p.day_of_birth, '01')))) as age
 	, c_gender.concept_name as gender
 	, vo.visit_occurrence_id
 	, vd.visit_detail_id
