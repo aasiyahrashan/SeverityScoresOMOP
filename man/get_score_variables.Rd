@@ -31,7 +31,7 @@ get_score_variables(
 
 \item{dataset_name}{Describes which concept codes to select. Can only be CCHIC at the moment.}
 
-\item{severity_score}{The name of the severity score to calculate. Only APACHE2 at the moment.}
+\item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
 }
 \description{
 Queries the postgres database to get variables required for the severity score specified.

@@ -11,6 +11,5 @@
 - Match pao2, paco2 and fio2s instead of just getting min and max.
 - Find out how blood pressure is stored in CCHIC and get concepts to match it.
 - Write mortality prediction calculation
-- Put APACHE II functions into a new file.
-- Write instructions on how to the package.
+- Write instructions on how to use the package.
 - Write a template for the concept files.
