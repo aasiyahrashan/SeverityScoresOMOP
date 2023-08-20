@@ -3,7 +3,7 @@ with icu_admission_details as (
 	--- But CCHIC doesn't have it, so we use hospital info.
 	select
 	p.person_id
-	, p.year_of_birth
+	, DATE_PART('year', COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) - p.birth_datetime) as age
 	, c_gender.concept_name as gender
 	, vo.visit_occurrence_id
 	, vd.visit_detail_id
@@ -38,8 +38,7 @@ and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) < {max
 inner join {schema}.concept c_unit
 on m.unit_concept_id = c_unit.concept_id
 -- want min or max values for each visit each day.
-GROUP BY adm.person_id, adm.year_of_birth, adm.gender,
+GROUP BY adm.person_id, adm.age, adm.gender,
          adm.visit_occurrence_id, adm.visit_detail_id,
 		 adm.icu_admission_datetime,
 		 DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime)
-

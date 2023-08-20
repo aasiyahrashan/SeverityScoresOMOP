@@ -75,7 +75,7 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
 #' @import data.table
 fix_apache_ii_units <- function(data){
 
-  data <- data.table(data)
+  data <- as.data.table(data)
 
   #### Default unit for temperature is celsius
   data[unit_temp <= 'degree Fahrenheit', (max_temp-32)*5/9]
@@ -172,10 +172,14 @@ fix_apache_ii_units <- function(data){
 #' @import data.table
 calculate_apache_ii_score <- function(data){
 
-  ####
+  data <- as.data.table(data)
   # Define the fields requested for full computation
-  apache <- c("max_temp", "min_temp", "apache_rr", "apache_temp", "apache_map", "apache_hr", "apache_mf",
-              "apache_gcs", "apache_wbc", "apache_ht", "apache_aki", "apache_K", "apache_Na", "apache_rf")
+  apache <- c("max_temp", "min_temp", "min_wcc", "max_wcc", "min_map", "max_map",
+              "max_fio2", "min_paco2", "min_pao2", "min_hematocrit", "max_hematocrit",
+              "min_hr", "max_hr", "min_rr", "max_rr", "min_ph", "max_ph",
+              "min_bicarbonate", "max_bicarbonate", "min_sodium", "max_sodium",
+              "min_potassium", "max_potassium", "min_gcs", "min_creatinine",
+              "max_creatinine", "age")
 
   ##### The order of conditions is important for all the fields below.
   # Display a warning if fields are missing
@@ -232,54 +236,54 @@ calculate_apache_ii_score <- function(data){
   ### NOTE - should probably get matching fio2, pao2, paco2 instead just getting min and max.
   data[, aado2 := (max_fio2*710) - (min_paco2*1.25) - min_pao2]
 
-  data[aado2_ap_ii := 0]
+  data[, aado2_ap_ii := 0]
   data[max_fio2 >= 0.5 & aado2 >= 500, aado2_ap_ii := 4]
-  data[max_fio2 < 0.5 & pao2_min < 55, aado2_ap_ii := 4]
+  data[max_fio2 < 0.5 & min_pao2 < 55, aado2_ap_ii := 4]
   data[max_fio2 >= 0.5 & aado2 >= 350 & aado2 < 500, aado2_ap_ii:= 3]
-  data[max_fio2 < 0.5 & pao2_min >= 55 & pao2_min <= 60, aado2_ap_ii := 3]
+  data[max_fio2 < 0.5 & min_pao2 >= 55 & min_pao2 <= 60, aado2_ap_ii := 3]
   data[max_fio2 >= 0.5 & aado2 >= 200 & aado2 < 350, aado2_ap_ii:= 2]
-  data[max_fio2 < 0.5 & pao2_min > 60 & pao2_min <= 70, aado2_ap_ii := 1]
+  data[max_fio2 < 0.5 & min_pao2 > 60 & min_pao2 <= 70, aado2_ap_ii := 1]
 
   #### Hematocrit
-  data[, hematocrit_ap_ii := 0]
-  data[min_hematocrit > c(29), hematocrit_ap_ii := 0]
-  data[(min_hematocrit > c(45.9)), hematocrit_ap_ii := 1]
-  data[(min_hematocrit < c(30)) | (min_hematocrit > c(49.9)), hematocrit_ap_ii := 2]
-  data[(min_hematocrit < c(20)) | (min_hematocrit > c(59.9)), hematocrit_ap_ii := 4]
+  data[, min_hematocrit_ap_ii := 0]
+  data[min_hematocrit > c(29), min_hematocrit_ap_ii := 0]
+  data[(min_hematocrit > c(45.9)), min_hematocrit_ap_ii := 1]
+  data[(min_hematocrit < c(30)) | (min_hematocrit > c(49.9)), min_hematocrit_ap_ii := 2]
+  data[(min_hematocrit < c(20)) | (min_hematocrit > c(59.9)), min_hematocrit_ap_ii := 4]
 
-  data[, hematocrit_ap_ii := 0]
-  data[max_hematocrit > c(29), hematocrit_ap_ii := 0]
-  data[(max_hematocrit > c(45.9)), hematocrit_ap_ii := 1]
-  data[(max_hematocrit < c(30)) | (max_hematocrit > c(49.9)), hematocrit_ap_ii := 2]
-  data[(max_hematocrit < c(20)) | (max_hematocrit > c(59.9)), hematocrit_ap_ii := 4]
+  data[, max_hematocrit_ap_ii := 0]
+  data[max_hematocrit > c(29), max_hematocrit_ap_ii := 0]
+  data[(max_hematocrit > c(45.9)), max_hematocrit_ap_ii := 1]
+  data[(max_hematocrit < c(30)) | (max_hematocrit > c(49.9)), max_hematocrit_ap_ii := 2]
+  data[(max_hematocrit < c(20)) | (max_hematocrit > c(59.9)), max_hematocrit_ap_ii := 4]
 
   #### heart rate
-  data[, hr_ap_ii := 0]
-  data[min_hr %between% c(70,109), hr_ap_ii := 0]
-  data[(min_hr %between% c(55,69)) | (min_hr %between% c(110,139)), hr_ap_ii := 2]
-  data[(min_hr %between% c(40,54)) | (min_hr %between% c(140,179)), hr_ap_ii := 3]
-  data[(min_hr < c(40)) | (min_hr > c(179)), hr_ap_ii := 4]
+  data[, min_hr_ap_ii := 0]
+  data[min_hr %between% c(70,109), min_hr_ap_ii := 0]
+  data[(min_hr %between% c(55,69)) | (min_hr %between% c(110,139)), min_hr_ap_ii := 2]
+  data[(min_hr %between% c(40,54)) | (min_hr %between% c(140,179)), min_hr_ap_ii := 3]
+  data[(min_hr < c(40)) | (min_hr > c(179)), min_hr_ap_ii := 4]
 
-  data[, hr_ap_ii := 0]
-  data[max_hr %between% c(70,109), hr_ap_ii := 0]
-  data[(max_hr %between% c(55,69)) | (max_hr %between% c(110,139)), hr_ap_ii := 2]
-  data[(max_hr %between% c(40,54)) | (max_hr %between% c(140,179)), hr_ap_ii := 3]
-  data[(max_hr < c(40)) | (max_hr > c(179)), hr_ap_ii := 4]
+  data[, max_hr_ap_ii := 0]
+  data[max_hr %between% c(70,109), max_hr_ap_ii := 0]
+  data[(max_hr %between% c(55,69)) | (max_hr %between% c(110,139)), max_hr_ap_ii := 2]
+  data[(max_hr %between% c(40,54)) | (max_hr %between% c(140,179)), max_hr_ap_ii := 3]
+  data[(max_hr < c(40)) | (max_hr > c(179)), max_hr_ap_ii := 4]
 
   #### respiratory rate
-  data[, rr_ap_ii := 0]
-  data[min_rr %between% c(25,34), rr_ap_ii := 1]
-  data[min_rr %between% c(12,24), rr_ap_ii := 0]
-  data[min_rr %between% c(10,11), rr_ap_ii := 2]
-  data[min_rr %between% c(6,9) | (min_rr %between% c(35,49)), rr_ap_ii := 3]
-  data[(min_rr < c(6)) | (min_rr > c(49)), rr_ap_ii := 4]
+  data[, min_rr_ap_ii := 0]
+  data[min_rr %between% c(25,34), min_rr_ap_ii := 1]
+  data[min_rr %between% c(12,24), min_rr_ap_ii := 0]
+  data[min_rr %between% c(10,11), min_rr_ap_ii := 2]
+  data[min_rr %between% c(6,9) | (min_rr %between% c(35,49)), min_rr_ap_ii := 3]
+  data[(min_rr < c(6)) | (min_rr > c(49)), min_rr_ap_ii := 4]
 
-  data[, rr_ap_ii := 0]
-  data[max_rr %between% c(25,34), rr_ap_ii := 1]
-  data[max_rr %between% c(12,24), rr_ap_ii := 0]
-  data[max_rr %between% c(10,11), rr_ap_ii := 2]
-  data[max_rr %between% c(6,9) | (max_rr %between% c(35,49)), rr_ap_ii := 3]
-  data[(max_rr < c(6)) | (max_rr > c(49)), rr_ap_ii := 4]
+  data[, max_rr_ap_ii := 0]
+  data[max_rr %between% c(25,34), max_rr_ap_ii := 1]
+  data[max_rr %between% c(12,24), max_rr_ap_ii := 0]
+  data[max_rr %between% c(10,11), max_rr_ap_ii := 2]
+  data[max_rr %between% c(6,9) | (max_rr %between% c(35,49)), max_rr_ap_ii := 3]
+  data[(max_rr < c(6)) | (max_rr > c(49)), max_rr_ap_ii := 4]
 
   #### Ph and HCO3
   #### Use Ph if available. If not, use HCO3.
@@ -344,8 +348,65 @@ calculate_apache_ii_score <- function(data){
   data[max_potassium < c(2.5)  | max_potassium > c(6.9), max_potassium_ap_ii := 4]
 
   #### GCS
-  data[gcs_ap_ii := 15- min_gcs]
+  data[, gcs_ap_ii := 15- min_gcs]
 
-  ####
+  #### creatinine
+  #### Assuming there's no renal failure
+  data[, renal_failure := 0]
+
+  data[, min_creat_ap_ii := 0]
+  data[min_creatinine >= 3.5, min_creat_ap_ii := 4]
+  data[min_creatinine >= 2 & min_creatinine < 3.5, min_creat_ap_ii := 3]
+  data[min_creatinine >= 1.5 & min_creatinine < 2, min_creat_ap_ii := 2]
+  data[min_creatinine < 0.6, min_creat_ap_ii := 2]
+  data[renal_failure == 1, min_creat_ap_ii*2]
+
+  data[, max_creat_ap_ii := 0]
+  data[max_creatinine >= 3.5, max_creat_ap_ii := 4]
+  data[max_creatinine >= 2 & max_creatinine < 3.5, max_creat_ap_ii := 3]
+  data[max_creatinine >= 1.5 & max_creatinine < 2, max_creat_ap_ii := 2]
+  data[max_creatinine < 0.6, max_creat_ap_ii := 2]
+  data[renal_failure == 1, max_creat_ap_ii*2]
+
+  #### Age.
+  data[, age_ap_ii := 0]
+  data[age < 44, age_ap_ii := 0]
+  data[age %between% c(45, 54), age_ap_ii := 2]
+  data[age %between% c(55, 64), age_ap_ii := 3]
+  data[age %between% c(65, 74), age_ap_ii := 5]
+  data[age > 74, age_ap_ii := 6]
+
+  #### Assuming there are no comorbidities
+  data[, comorbid_ap_ii := 0]
+  #### Assuming everyone is a planned admission.
+  data[, emergency := 0]
+
+  #### chronic health score
+  data[, chronic_ap_ii := 0]
+  data[comorbid_ap_ii > 0 & emergency == 0, chronic_ap_ii := 2]
+  data[comorbid_ap_ii > 0 & emergency == 1, chronic_ap_ii := 5]
+
+  ### Getting the worst score for each component.
+  data[, apache_ii_score :=
+         pmax(min_temp_ap_ii, max_temp_ap_ii) + pmax(min_wcc_ap_ii, max_wcc_ap_ii) +
+         pmax(min_map_ap_ii, max_map_ap_ii) + aado2_ap_ii +
+         pmax(min_hematocrit_ap_ii, max_hematocrit_ap_ii) + pmax(min_hr_ap_ii, max_hr_ap_ii) +
+         pmax(min_rr_ap_ii, max_rr_ap_ii) + pmax(min_ph_ap_ii, max_ph_ap_ii) +
+         pmax(min_bicarbonate_ap_ii, max_bicarbonate_ap_ii) + pmax(min_sodium_ap_ii, max_sodium_ap_ii) +
+         pmax(min_potassium_ap_ii, max_potassium_ap_ii) + gcs_ap_ii +
+         pmax(min_creat_ap_ii, max_creat_ap_ii) + age_ap_ii + chronic_ap_ii
+         ]
+
+  ### Deleting the intermediate variables so the dataset is not too long.
+  delete_cols <- c(
+    "min_temp_ap_ii", "max_temp_ap_ii", "min_wcc_ap_ii", "max_wcc_ap_ii",
+    "min_map_ap_ii", "max_map_ap_ii", "aado2_ap_ii", "min_hematocrit_ap_ii",
+    "max_hematocrit_ap_ii", "min_hr_ap_ii", "max_hr_ap_ii", "min_rr_ap_ii", "max_rr_ap_ii",
+    "min_ph_ap_ii", "max_ph_ap_ii", "min_bicarbonate_ap_ii", "max_bicarbonate_ap_ii",
+    "min_sodium_ap_ii", "max_sodium_ap_ii", "min_potassium_ap_ii", "max_potassium_ap_ii",
+    "gcs_ap_ii", "min_creat_ap_ii", "max_creat_ap_ii", "age_ap_ii", "chronic_ap_ii",
+    "emergency", "comorbid_ap_ii", "renal_failure")
+
+  data[, (delete_cols) := NULL]
   data
 }
