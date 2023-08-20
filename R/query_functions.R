@@ -84,11 +84,13 @@ fix_apache_ii_units <- function(data){
   if(!all(unique(data$unit_temp) %in% c("degree Celsius", "degree Fahrenheit", NA))){
     warning("Temperature contains an unknown unit of measure. Assuming values are in Celsius")
   }
+  data[, unit_temp := "degree Celsius"]
 
   #### Default unit for white cell count is billion per liter
   if(!all(unique(data$unit_wcc) %in% c("billion per liter", NA))){
     warning("White cell count contains an unknown unit of measure. Assuming values are in billion per liter")
   }
+  data[, unit_wcc := "billion per liter"]
 
   #### Default unit for fio2 is ratio
   data[unit_fio2 <= 'percent', max_fio2/100]
@@ -97,6 +99,7 @@ fix_apache_ii_units <- function(data){
   if(!all(unique(data$unit_fio2) %in% c("ratio", "percent", NA))){
     warning("fio2 contains an unknown unit of measure. Assuming values are ratio")
   }
+  data[, unit_fio2 := "ratio"]
 
   #### Default unit for pao2 is millimeter mercury column
   data[unit_pao2 <= 'kilopascal', max_pao2*7.50062]
@@ -105,6 +108,7 @@ fix_apache_ii_units <- function(data){
   if(!all(unique(data$unit_pao2) %in% c("kilopascal", "millimeter mercury column", NA))){
     warning("pao2 contains an unknown unit of measure. Assuming values are millimeter mercury column")
   }
+  data[, unit_pao2 := "millimeter mercury column"]
 
   #### Default unit for hematocrit is percent
   data[unit_hematocrit <= 'liter per liter', max_hematocrit*100]
@@ -116,6 +120,7 @@ fix_apache_ii_units <- function(data){
   if(!all(unique(data$unit_hematocrit) %in% c("liter per liter", "percent", "ratio", NA))){
     warning("hematocrit contains an unknown unit of measure. Assuming values are liter per liter")
   }
+  data[, unit_hematocrit := "percent"]
 
   #### Default unit for sodium is millimole per liter
   data[unit_sodium <= 'millimole per deciliter', max_sodium*10]
@@ -124,6 +129,7 @@ fix_apache_ii_units <- function(data){
   if(!all(unique(data$unit_sodium) %in% c("millimole per liter", "millimole per deciliter", NA))){
     warning("sodium contains an unknown unit of measure. Assuming values are millimole per liter")
   }
+  data[, unit_sodium := "millimole per liter"]
 
   #### Default unit for potassium is millimole per liter
   data[unit_potassium <= 'millimole per deciliter', max_potassium*10]
@@ -132,6 +138,7 @@ fix_apache_ii_units <- function(data){
   if(!all(unique(data$unit_potassium) %in% c("millimole per liter", "millimole per deciliter", NA))){
     warning("potassium contains an unknown unit of measure. Assuming values are millimole per liter")
   }
+  data[, unit_potassium := "millimole per liter"]
 
   #### Default unit for creatinine is milligram per deciliter
   data[unit_creatinine <= 'micromole per liter', max_creatinine*0.0113]
@@ -147,11 +154,13 @@ fix_apache_ii_units <- function(data){
                                               "millimole per liter", "milligram per deciliter", NA))){
     warning("creatinine contains an unknown unit of measure. Assuming values are milligram per deciliter")
   }
+  data[, unit_creatinine := "milligram per deciliter"]
 
   #### Default unit for bicarbonate is millimole per liter
   if(!all(unique(data$unit_bicarbonate) %in% c("millimole per liter", NA))){
     warning("bicarbonate contains an unknown unit of measure. Assuming values are in millimole per liter")
   }
+  data[, unit_bicarbonate := "millimole per liter"]
 
   #### Default for respiratory rate is breaths per minute.
   #### Default unit for heart rate is beats per minute
