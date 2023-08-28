@@ -6,6 +6,7 @@
 #'
 #' @return A data frame with the physiology values converted to the default units of measure specified.
 #' @import data.table
+#' @export
 fix_apache_ii_units <- function(data){
 
   data <- as.data.table(data)
@@ -112,6 +113,7 @@ fix_apache_ii_units <- function(data){
 #'
 #' @return A data frame with a variable containing the apache II score calculated.
 #' @import data.table
+#' @export
 calculate_apache_ii_score <- function(data){
 
   data <- as.data.table(data)

@@ -5,6 +5,7 @@
 #'
 #' @importFrom DBI dbConnect
 #' @importFrom RPostgres Postgres
+#' @export
 postgres_connect <- function(host, dbname, port, user, password){
   DBI::dbConnect(
     RPostgres::Postgres(),
@@ -31,6 +32,7 @@ postgres_connect <- function(host, dbname, port, user, password){
 #' @import dplyr
 #' @import glue
 #' @import readr
+#' @export
 get_score_variables <- function(postgres_conn, schema, start_date, end_date,
                                 min_day, max_day, dataset_name, severity_score){
 
