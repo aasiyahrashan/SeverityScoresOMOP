@@ -1,5 +1,5 @@
 ##### Install using
-devtools::install_github("aasiyahrashan/SeverityScoresOMOP", auth_token = "your_PAT")
+`devtools::install_github("aasiyahrashan/SeverityScoresOMOP", auth_token = "your_PAT")`
 
 ##### Calculates the APACHE II ICU risk prediction score and probability of mortality.
 - Works on databases in the OMOP CDM format version 5.3.1.

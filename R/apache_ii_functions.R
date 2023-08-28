@@ -20,19 +20,38 @@ fix_apache_ii_units <- function(data){
   }
   data[, unit_temp := "degree Celsius"]
 
-  #### Default unit for white cell count is billion per liter
-  if(!all(unique(data$unit_wcc) %in% c("billion per liter", NA))){
+  #### Default unit for white cell count is billion per liter.
+  #### Which is the same as thousand per cubic millimeter. And thousand per microliter.
+  # /mm3
+  data[unit_wcc <= 'per cubic millimeter', max_wcc/1000]
+  data[unit_wcc <= 'per cubic millimeter', min_wcc/1000]
+
+  # cells per cubic millimeter
+  data[unit_wcc <= 'cells per cubic millimeter', max_wcc/1000]
+  data[unit_wcc <= 'cells per cubic millimeter', min_wcc/1000]
+
+  # per liter
+  data[unit_wcc <= 'per liter', max_wcc*0.000000001]
+  data[unit_wcc <= 'per liter', min_wcc*0.000000001]
+
+  # lakhs/mm3
+  data[unit_wcc <= 'lakhs/mm3', max_wcc*100]
+  data[unit_wcc <= 'lakhs/mm3', min_wcc*100]
+
+  if(!all(unique(data$unit_wcc) %in% c("billion per liter", "thousand per cubic millimeter",
+                                       "billion cells per liter", "thousand per microliter",
+                                       "per cubic millimeter", "cells per cubic millimeter",
+                                       "per liter", "lakhs/mm3s",
+                                       NA))){
     warning("White cell count contains an unknown unit of measure. Assuming values are in billion per liter")
   }
   data[, unit_wcc := "billion per liter"]
 
-  #### Default unit for fio2 is ratio
-  data[unit_fio2 <= 'percent', max_fio2/100]
-  data[unit_fio2 <= 'percent', min_fio2/100]
+  #### FiO2. Not bothering with unit of measure. Going with whether it's a ratio or percentage.
+  #### Making it a ratio.
+  data[max_fio > 1, max_fio2/100]
+  data[min_fio2 >1, min_fio2/100]
 
-  if(!all(unique(data$unit_fio2) %in% c("ratio", "percent", NA))){
-    warning("fio2 contains an unknown unit of measure. Assuming values are ratio")
-  }
   data[, unit_fio2 := "ratio"]
 
   #### Default unit for pao2 is millimeter mercury column
@@ -56,20 +75,24 @@ fix_apache_ii_units <- function(data){
   }
   data[, unit_hematocrit := "percent"]
 
-  #### Default unit for sodium is millimole per liter
+  #### Default unit for sodium is millimole per liter.
+  #### This is also the same as milliequivalent per liter
   data[unit_sodium <= 'millimole per deciliter', max_sodium*10]
   data[unit_sodium <= 'millimole per deciliter', min_sodium*10]
 
-  if(!all(unique(data$unit_sodium) %in% c("millimole per liter", "millimole per deciliter", NA))){
+  if(!all(unique(data$unit_sodium) %in% c("millimole per liter", "millimole per deciliter",
+                                          "milliequivalent per liter", NA))){
     warning("sodium contains an unknown unit of measure. Assuming values are millimole per liter")
   }
   data[, unit_sodium := "millimole per liter"]
 
-  #### Default unit for potassium is millimole per liter
+  #### Default unit for potassium is millimole per liter.
+  #### Which is the same as milliequivalent per liter
   data[unit_potassium <= 'millimole per deciliter', max_potassium*10]
   data[unit_potassium <= 'millimole per deciliter', min_potassium*10]
 
-  if(!all(unique(data$unit_potassium) %in% c("millimole per liter", "millimole per deciliter", NA))){
+  if(!all(unique(data$unit_potassium) %in% c("millimole per liter", "millimole per deciliter",
+                                             "milliequivalent per liter", NA))){
     warning("potassium contains an unknown unit of measure. Assuming values are millimole per liter")
   }
   data[, unit_potassium := "millimole per liter"]
@@ -90,8 +113,10 @@ fix_apache_ii_units <- function(data){
   }
   data[, unit_creatinine := "milligram per deciliter"]
 
-  #### Default unit for bicarbonate is millimole per liter
-  if(!all(unique(data$unit_bicarbonate) %in% c("millimole per liter", NA))){
+  #### Default unit for bicarbonate is millimole per liter.
+  #### Which is the same as milliequivalent per liter.
+  if(!all(unique(data$unit_bicarbonate) %in% c("millimole per liter",
+                                               "milliequivalent per liter", NA))){
     warning("bicarbonate contains an unknown unit of measure. Assuming values are in millimole per liter")
   }
   data[, unit_bicarbonate := "millimole per liter"]
