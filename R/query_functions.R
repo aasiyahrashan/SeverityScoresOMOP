@@ -39,7 +39,12 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
   #### Getting the list of concept IDs required for the score, and creating SQL lines from them.
   concepts <- read_csv(system.file(glue("{dataset_name}_concepts.csv"),
                           package = "SeverityScoresOMOP")) %>%
-    filter(score == severity_score) %>%
+    filter(score == severity_score)
+
+  ##### Getting concepts stored in the measurement table.
+  measurement_concepts <-
+    concepts %>%
+    filter(table == "Measurement") %>%
     mutate(max_query = glue(
       ", MAX(CASE WHEN m.measurement_concept_id = {concept_id} then m.{omop_variable} END) AS max_{short_name}"),
       min_query = glue(
@@ -48,9 +53,9 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
         ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then c_unit.concept_name END) AS unit_{short_name}"))
 
   ## Collapsing all the queries into a string.
-  variables_required <- glue(glue_collapse(concepts$max_query, sep = "\n"), "\n",
-                      glue_collapse(concepts$min_query, sep = "\n"), "\n",
-                      glue_collapse(concepts$unit_query, sep = "\n"))
+  variables_required <- glue(glue_collapse(measurement_concepts$max_query, sep = "\n"), "\n",
+                      glue_collapse(measurement_concepts$min_query, sep = "\n"), "\n",
+                      glue_collapse(measurement_concepts$unit_query, sep = "\n"))
 
   #### Importing the rest of the query from the text file.
   raw_sql <- readr::read_file(system.file("physiology_variables.sql",
@@ -61,10 +66,48 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
          min_day = min_day,
          max_day = max_day,
          variables_required = variables_required)
-
-  print(raw_sql)
-
-#### Running the query
+  #### Running the query
   data <- dbGetQuery(postgres_conn, raw_sql)
+
+  ########## Some concepts may be stored in the observation table.
+  ########## Using a completely separate query for these and joining the results after
+  ########## TODO - try getting these into one query so the joining can happen in SQL.
+  ########## Other datasets may store numeric values in the observation table. This is not currently supported.
+  observation_concepts <- concepts %>%
+    filter(table == "Observation" & omop_variable == "value_as_concept_id")
+
+  if (nrow(observation_concepts) > 0){
+    #### Most of these use several concepts IDs to represent the same score variable.
+    #### Eg, CCAA uses 3 codes for renal failure. Collapsing those here.
+    #### The query returns the number of rows matching the concept IDs provided.
+    observation_concepts <- observation_concepts %>%
+      group_by(short_name) %>%
+      summarise(concept_id_value =
+                  glue("'", glue_collapse(concept_id_value, sep = "', '"), "'")) %>%
+      mutate(count_query = glue(
+        "COUNT (CASE WHEN o.observation_concept_id = {value_as_concept_id}
+        AND o.value_as_concept_id IN ({concept_id_value}) THEN o.observation_id END)
+        as count_{short_name}"))
+
+    ## Collapsing all the queries into a string.
+    observation_variables_required <-
+      glue(glue_collapse(observation_concepts$count_query, sep = "\n"), "\n")
+
+    #### Importing the rest of the query from the text file.
+    raw_sql <- readr::read_file(system.file("history_variables.sql",
+                                            package = "SeverityScoresOMOP")) %>%
+      glue(schema = schema,
+           start_date = start_date,
+           end_date = end_date,
+           observation_variables_required = observation_variables_required)
+
+    #### Running the query
+    observation_data <- dbGetQuery(postgres_conn, raw_sql)
+
+    #### Don't like having to merge here, but doing it for now.
+    data <- left_join(data, observation_data,
+                      by = c("person_id", "visit_occurrence_id", "visit_detail_id"))
+  }
+
   as_tibble(data)
 }
