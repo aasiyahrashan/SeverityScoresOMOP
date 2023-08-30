@@ -128,7 +128,7 @@ fix_apache_ii_units <- function(data){
   #### FiO2. Not bothering with unit of measure. Going with whether it's a ratio or percentage.
   #### Making it a ratio.
   data[max_fio2 > 1, max_fio2/100]
-  data[min_fio2 >1, min_fio2/100]
+  data[min_fio2 > 1, min_fio2/100]
 
   data[, unit_fio2 := "ratio"]
 
