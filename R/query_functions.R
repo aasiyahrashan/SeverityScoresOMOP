@@ -81,11 +81,11 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
     #### Eg, CCAA uses 3 codes for renal failure. Collapsing those here.
     #### The query returns the number of rows matching the concept IDs provided.
     observation_concepts <- observation_concepts %>%
-      group_by(short_name) %>%
+      group_by(short_name, concept_id) %>%
       summarise(concept_id_value =
                   glue("'", glue_collapse(concept_id_value, sep = "', '"), "'")) %>%
       mutate(count_query = glue(
-        "COUNT (CASE WHEN o.observation_concept_id = {value_as_concept_id}
+        ", COUNT (CASE WHEN o.observation_concept_id = {concept_id}
         AND o.value_as_concept_id IN ({concept_id_value}) THEN o.observation_id END)
         as count_{short_name}"))
 

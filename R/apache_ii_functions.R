@@ -1,3 +1,81 @@
+#' Calculates emergency admission variable for APACHE II. Assumes elective if there is no data.
+#' @param data Dataframe containing physiology variables and units of measure.
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#'
+#' @return A data frame with the physiology values converted to the default units of measure specified.
+#' @import data.table
+emergency_admission <- function(data){
+
+  #### Assuming everyone is a planned admission if no information.
+  data[, emergency_admission := 0]
+
+  ### Using emergency admisison variable if it exists
+  if ("count_emergency_admission" %in% names(data)){
+    data[count_emergency_admission > 0, emergency_admission := 1]
+  }
+
+  data
+}
+
+#' Calculates renal failure variable for APACHE II. Assumes no renal failure if no data.
+#' @param data Dataframe containing physiology variables and units of measure.
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#'
+#' @return A data frame with the physiology values converted to the default units of measure specified.
+#' @import data.table
+renal_failure <- function(data){
+
+  #### Assuming no renal failure if there's no
+  data[, renal_failure := 0]
+
+  ### Using variable if it exists
+  if ("count_renal_failure" %in% names(data)){
+    data[count_renal_failure > 0, renal_failure := 1]
+  }
+
+  data
+}
+
+#' Calculates comorbidity variable for APACHE II. Assumes no comorbidities if no data.
+#' @param data Dataframe containing physiology variables and units of measure.
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#'
+#' @return A data frame with the physiology values converted to the default units of measure specified.
+#' @import data.table
+comorbidites <- function(data){
+
+  #### Assuming no comorbidities if there's no data
+  data[, comorbidity := 0]
+
+  ### Using variable if it exists
+  if ("count_comorbidity" %in% names(data)){
+    data[count_comorbidity > 0, comorbidity := 1]
+  }
+
+  data
+}
+
+#' Calculates mean arterial pressure if not already calculated.
+#' @param data Dataframe containing physiology variables and units of measure.
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#'
+#' @return A data frame with the physiology values converted to the default units of measure specified.
+#' @import data.table
+mean_arterial_pressure <- function(data){
+
+  ## If min exists, the max has to as well.
+  if(!"min_map" %in% names(data)){
+    ### Assuming bp variables will be called sbp and dbp if not map
+    if ("min_dbp" %in% names(data) &
+        "min_sbp" %in% names(data)){
+      ### Calculating MAP
+      data[, min_map := min_dbp + 1/3*(min_sbp - min_dbp)]
+      data[, max_map := max_dbp + 1/3*(max_sbp - max_dbp)]
+    }
+  }
+  data
+}
+
 #' Convert units of measure into a format suitable for the APACHE II score calculation
 #' Assumes units of measure are encoded in OMOP using the UCUM source vocabulary
 #' Throws a warning if the unit of measure is not recognised. Assumes the default unit of measure if not available.
@@ -49,7 +127,7 @@ fix_apache_ii_units <- function(data){
 
   #### FiO2. Not bothering with unit of measure. Going with whether it's a ratio or percentage.
   #### Making it a ratio.
-  data[max_fio > 1, max_fio2/100]
+  data[max_fio2 > 1, max_fio2/100]
   data[min_fio2 >1, min_fio2/100]
 
   data[, unit_fio2 := "ratio"]
@@ -143,18 +221,23 @@ calculate_apache_ii_score <- function(data){
 
   data <- as.data.table(data)
   # Define the fields requested for full computation
-  apache <- c("max_temp", "min_temp", "min_wcc", "max_wcc", "min_map", "max_map",
+  # Left out the blood pressure, renal failure, admission type and comorbidity variables
+  # since they may be calculated within this function.
+  apache <- c("max_temp", "min_temp", "min_wcc", "max_wcc",
               "max_fio2", "min_paco2", "min_pao2", "min_hematocrit", "max_hematocrit",
               "min_hr", "max_hr", "min_rr", "max_rr", "min_ph", "max_ph",
               "min_bicarbonate", "max_bicarbonate", "min_sodium", "max_sodium",
               "min_potassium", "max_potassium", "min_gcs", "min_creatinine",
               "max_creatinine", "age")
 
-  ##### The order of conditions is important for all the fields below.
   # Display a warning if fields are missing
-  if (length(which(is.na(match(apache, names(data))))) > 0 ){
-    apache <- apache[which(!is.na(match(apache, names(data))))]
+  if (all(!apache %in% names(apache))){
+    warning("Some of the variables required for the APACHE II calculation are missing.
+            Please make sure get_score_variables function has been run, and the concepts
+            file includes all variables.")
   }
+
+  ##### THE ORDER OF CONDITIONS IS IMPORTANT FOR ALL THE BLOCKS BELOW.
 
   #### Temperature. Need to calculate for both min and max to work out which is worse.
   data[, max_temp_ap_ii := 0]
@@ -185,8 +268,7 @@ calculate_apache_ii_score <- function(data){
   data[(max_wcc < c(1.000)) | (max_wcc > c(39.999)), max_wcc_ap_ii:= 4]
 
   ###### Mean arterial pressure. Calculating MAP first.
-  # data[, min_map := min_dbp + 1/3(min_sbp – min_dbp)]
-  # data[, max_map := max_dbp + 1/3(max_sbp – max_dbp)]
+  data <- mean_arterial_pressure(data)
 
   data[, min_map_ap_ii := 0]
   data[(min_map < c(50)) | (min_map > c(159)), min_map_ap_ii := 4]
@@ -321,21 +403,21 @@ calculate_apache_ii_score <- function(data){
   data[is.na(gcs_ap_ii), gcs_ap_ii := 0]
 
   #### creatinine
-  #### Assuming there's no renal failure
-  data[, renal_failure := 0]
-
   data[, min_creat_ap_ii := 0]
   data[min_creatinine >= 3.5, min_creat_ap_ii := 4]
   data[min_creatinine >= 2 & min_creatinine < 3.5, min_creat_ap_ii := 3]
   data[min_creatinine >= 1.5 & min_creatinine < 2, min_creat_ap_ii := 2]
   data[min_creatinine < 0.6, min_creat_ap_ii := 2]
-  data[renal_failure == 1, min_creat_ap_ii*2]
 
   data[, max_creat_ap_ii := 0]
   data[max_creatinine >= 3.5, max_creat_ap_ii := 4]
   data[max_creatinine >= 2 & max_creatinine < 3.5, max_creat_ap_ii := 3]
   data[max_creatinine >= 1.5 & max_creatinine < 2, max_creat_ap_ii := 2]
   data[max_creatinine < 0.6, max_creat_ap_ii := 2]
+
+  ### The creat score is doubled if there was renal failure.
+  data <- renal_failure(data)
+  data[renal_failure == 1, min_creat_ap_ii*2]
   data[renal_failure == 1, max_creat_ap_ii*2]
 
   #### Age.
@@ -347,14 +429,15 @@ calculate_apache_ii_score <- function(data){
   data[age > 74, age_ap_ii := 6]
 
   #### Assuming there are no comorbidities
-  data[, comorbid_ap_ii := 0]
-  #### Assuming everyone is a planned admission.
-  data[, emergency := 0]
+  data <- comorbidities(data)
+
+  ### Getting information about admission type emergency or elective.
+  data <- emergency_admission(data)
 
   #### chronic health score
   data[, chronic_ap_ii := 0]
-  data[comorbid_ap_ii > 0 & emergency == 0, chronic_ap_ii := 2]
-  data[comorbid_ap_ii > 0 & emergency == 1, chronic_ap_ii := 5]
+  data[comorbidity > 0 & emergency == 0, chronic_ap_ii := 2]
+  data[comorbidity > 0 & emergency == 1, chronic_ap_ii := 5]
 
   ### Getting the worst score for each component.
   data[, apache_ii_score :=

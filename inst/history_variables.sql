@@ -17,7 +17,7 @@ with icu_admission_details as (
 )
 
 select
-adm*,
+adm.*
 --- Count queries that describe how many of the comorbidites etc the patient had during that admission. Eg.
 --- count (case when observation_concept_id = '4214956'
 --- and value_as_concept_id in ('4267414', '4245975') then observation_id end) as comorbid_number
