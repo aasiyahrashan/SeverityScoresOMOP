@@ -42,7 +42,7 @@ renal_failure <- function(data){
 #'
 #' @return A data frame with the physiology values converted to the default units of measure specified.
 #' @import data.table
-comorbidites <- function(data){
+comorbidities <- function(data){
 
   #### Assuming no comorbidities if there's no data
   data[, comorbidity := 0]
@@ -231,7 +231,7 @@ calculate_apache_ii_score <- function(data){
               "max_creatinine", "age")
 
   # Display a warning if fields are missing
-  if (all(!apache %in% names(apache))){
+  if (all(!apache %in% names(data))){
     warning("Some of the variables required for the APACHE II calculation are missing.
             Please make sure get_score_variables function has been run, and the concepts
             file includes all variables.")
@@ -436,8 +436,8 @@ calculate_apache_ii_score <- function(data){
 
   #### chronic health score
   data[, chronic_ap_ii := 0]
-  data[comorbidity > 0 & emergency == 0, chronic_ap_ii := 2]
-  data[comorbidity > 0 & emergency == 1, chronic_ap_ii := 5]
+  data[comorbidity > 0 & emergency_admission == 0, chronic_ap_ii := 2]
+  data[comorbidity > 0 & emergency_admission == 1, chronic_ap_ii := 5]
 
   ### Getting the worst score for each component.
   data[, apache_ii_score :=
@@ -457,8 +457,7 @@ calculate_apache_ii_score <- function(data){
     "max_hematocrit_ap_ii", "min_hr_ap_ii", "max_hr_ap_ii", "min_rr_ap_ii", "max_rr_ap_ii",
     "min_ph_ap_ii", "max_ph_ap_ii", "min_bicarbonate_ap_ii", "max_bicarbonate_ap_ii",
     "min_sodium_ap_ii", "max_sodium_ap_ii", "min_potassium_ap_ii", "max_potassium_ap_ii",
-    "gcs_ap_ii", "min_creat_ap_ii", "max_creat_ap_ii", "age_ap_ii", "chronic_ap_ii",
-    "emergency", "comorbid_ap_ii", "renal_failure")
+    "gcs_ap_ii", "min_creat_ap_ii", "max_creat_ap_ii", "age_ap_ii", "chronic_ap_ii")
 
   data[, (delete_cols) := NULL]
   data

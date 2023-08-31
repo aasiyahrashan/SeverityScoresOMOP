@@ -27,6 +27,7 @@ inner join {schema}.observation o
 -- making sure the visits match up
 -- No date filtering in this query because the concept IDs currently used are history/admission specific.
 -- Need to edit the query if this changes for other datasets.
-on (adm.visit_detail_id = o.visit_detail_id or adm.visit_detail_id is null)
+on adm.person_id = o.person_id
 and adm.visit_occurrence_id = o.visit_occurrence_id
+and (adm.visit_detail_id = o.visit_detail_id or adm.visit_detail_id is null)
 group by adm.person_id, adm.visit_occurrence_id, adm.visit_detail_id

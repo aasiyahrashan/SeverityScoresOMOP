@@ -45,6 +45,10 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
   measurement_concepts <-
     concepts %>%
     filter(table == "Measurement") %>%
+    #### GCS can sometimes be stored as a concept ID instead of number.
+    #### These need a separate query.
+    filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
+             omop_variable == "value_as_concept_id")) %>%
     mutate(max_query = glue(
       ", MAX(CASE WHEN m.measurement_concept_id = {concept_id} then m.{omop_variable} END) AS max_{short_name}"),
       min_query = glue(
@@ -68,6 +72,31 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
          variables_required = variables_required)
   #### Running the query
   data <- dbGetQuery(postgres_conn, raw_sql)
+
+  ######### Doing GCS separately if stored as concept ID instead of number.
+  ######### Otherwise, there's no way of getting the min and max
+  gcs_concepts <- concepts %>%
+    filter((short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
+               omop_variable == "value_as_concept_id"))
+
+  if(nrow(gcs_concepts > 0)){
+    ###### The SQL file currently has the GCS LOINC concepts hardocded.
+    ###### I plan to construct it from here when I have time.
+    raw_sql <- readr::read_file(system.file("gcs_if_stored_as_concept.sql",
+                                            package = "SeverityScoresOMOP")) %>%
+      glue(schema = schema,
+           start_date = start_date,
+           end_date = end_date,
+           min_day = min_day,
+           max_day = max_day)
+    #### Running the query
+    gcs_data <- dbGetQuery(postgres_conn, raw_sql)
+
+    ### Don't like joining here, but not much choice.
+    data <- left_join(data, gcs_data,
+                      by = c("person_id", "visit_occurrence_id",
+                             "visit_detail_id", "days_in_icu"))
+  }
 
   ########## Some concepts may be stored in the observation table.
   ########## Using a completely separate query for these and joining the results after

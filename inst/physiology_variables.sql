@@ -34,8 +34,9 @@ adm.*
 from icu_admission_details adm
 inner join {schema}.measurement m
 -- making sure the visits match up, and filtering by number of days in ICU
-on (adm.visit_detail_id = m.visit_detail_id or adm.visit_detail_id is null)
+on adm.person_id = m.person_id
 and adm.visit_occurrence_id = m.visit_occurrence_id
+and (adm.visit_detail_id = m.visit_detail_id or adm.visit_detail_id is null)
 and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) >= {min_day}
 and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) < {max_day}
 -- getting unit of measure for numeric variables.
