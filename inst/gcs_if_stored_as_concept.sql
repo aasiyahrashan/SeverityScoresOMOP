@@ -37,7 +37,7 @@ m.measurement_datetime
 , MAX(CASE WHEN m.measurement_concept_id = '3008223' then m.value_as_concept_id END) gcs_motor
 , MAX(CASE WHEN m.measurement_concept_id = '3009094' then m.value_as_concept_id END) gcs_verbal
 from icu_admission_details adm
-inner join {schema}.measurement m
+left join {schema}.measurement m
 -- making sure the visits match up, and filtering by number of days in ICU
 on adm.person_id = m.person_id
 and adm.visit_occurrence_id = m.visit_occurrence_id

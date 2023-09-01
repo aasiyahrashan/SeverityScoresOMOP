@@ -23,7 +23,7 @@ adm.*
 --- and value_as_concept_id in ('4267414', '4245975') then observation_id end) as comorbid_number
 {observation_variables_required}
 from icu_admission_details adm
-inner join {schema}.observation o
+left join {schema}.observation o
 -- making sure the visits match up
 -- No date filtering in this query because the concept IDs currently used are history/admission specific.
 -- Need to edit the query if this changes for other datasets.

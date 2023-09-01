@@ -32,7 +32,7 @@ adm.*
 -- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
 {variables_required}
 from icu_admission_details adm
-inner join {schema}.measurement m
+left join {schema}.measurement m
 -- making sure the visits match up, and filtering by number of days in ICU
 on adm.person_id = m.person_id
 and adm.visit_occurrence_id = m.visit_occurrence_id
