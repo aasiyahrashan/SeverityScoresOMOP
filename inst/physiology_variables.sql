@@ -40,7 +40,7 @@ and (adm.visit_detail_id = m.visit_detail_id or adm.visit_detail_id is null)
 and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) >= {min_day}
 and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) < {max_day}
 -- getting unit of measure for numeric variables.
-inner join {schema}.concept c_unit
+left join {schema}.concept c_unit
 on m.unit_concept_id = c_unit.concept_id
 -- want min or max values for each visit each day.
 GROUP BY adm.person_id, adm.age, adm.gender,
