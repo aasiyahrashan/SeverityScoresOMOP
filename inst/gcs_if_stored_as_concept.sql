@@ -46,7 +46,7 @@ and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) >= {mi
 and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) < {max_day}
 --- Making sure we get gcs values only. The variables become null otherwise.
 where value_as_concept_id is not null
-and measurement_concept_id IN ('3016335', '3016335', '3009094')
+and measurement_concept_id IN ('3016335', '3008223', '3009094')
 ---- Getting values that were measured at the same time.
 group by
 	adm.person_id, adm.visit_occurrence_id, adm.visit_detail_id,
