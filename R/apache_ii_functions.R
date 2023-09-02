@@ -90,8 +90,8 @@ fix_apache_ii_units <- function(data){
   data <- as.data.table(data)
 
   #### Default unit for temperature is celsius
-  data[unit_temp <= 'degree Fahrenheit', (max_temp-32)*5/9]
-  data[unit_temp <= 'degree Fahrenheit', (min_temp-32)*5/9]
+  data[unit_temp == 'degree Fahrenheit', max_temp := (max_temp-32)*5/9]
+  data[unit_temp == 'degree Fahrenheit', min_temp := (min_temp-32)*5/9]
 
   if(!all(unique(data$unit_temp) %in% c("degree Celsius", "degree Fahrenheit", NA))){
     warning("Temperature contains an unknown unit of measure. Assuming values are in Celsius")
@@ -101,20 +101,20 @@ fix_apache_ii_units <- function(data){
   #### Default unit for white cell count is billion per liter.
   #### Which is the same as thousand per cubic millimeter. And thousand per microliter.
   # /mm3
-  data[unit_wcc <= 'per cubic millimeter', max_wcc/1000]
-  data[unit_wcc <= 'per cubic millimeter', min_wcc/1000]
+  data[unit_wcc == 'per cubic millimeter', max_wcc := max_wcc/1000]
+  data[unit_wcc == 'per cubic millimeter', min_wcc := min_wcc/1000]
 
   # cells per cubic millimeter
-  data[unit_wcc <= 'cells per cubic millimeter', max_wcc/1000]
-  data[unit_wcc <= 'cells per cubic millimeter', min_wcc/1000]
+  data[unit_wcc == 'cells per cubic millimeter', max_wcc := max_wcc/1000]
+  data[unit_wcc == 'cells per cubic millimeter', min_wcc := min_wcc/1000]
 
   # per liter
-  data[unit_wcc <= 'per liter', max_wcc*0.000000001]
-  data[unit_wcc <= 'per liter', min_wcc*0.000000001]
+  data[unit_wcc == 'per liter', max_wcc := max_wcc*0.000000001]
+  data[unit_wcc == 'per liter', min_wcc := min_wcc*0.000000001]
 
   # lakhs/mm3
-  data[unit_wcc <= 'lakhs/mm3', max_wcc*100]
-  data[unit_wcc <= 'lakhs/mm3', min_wcc*100]
+  data[unit_wcc == 'lakhs/mm3', max_wcc := max_wcc*100]
+  data[unit_wcc == 'lakhs/mm3', min_wcc := min_wcc*100]
 
   if(!all(unique(data$unit_wcc) %in% c("billion per liter", "thousand per cubic millimeter",
                                        "billion cells per liter", "thousand per microliter",
@@ -127,14 +127,14 @@ fix_apache_ii_units <- function(data){
 
   #### FiO2. Not bothering with unit of measure. Going with whether it's a ratio or percentage.
   #### Making it a ratio.
-  data[max_fio2 > 1, max_fio2/100]
-  data[min_fio2 > 1, min_fio2/100]
+  data[max_fio2 > 1, max_fio2 := max_fio2/100]
+  data[min_fio2 > 1, min_fio2 := min_fio2/100]
 
   data[, unit_fio2 := "ratio"]
 
   #### Default unit for pao2 is millimeter mercury column
-  data[unit_pao2 <= 'kilopascal', max_pao2*7.50062]
-  data[unit_pao2 <= 'kilopascal', min_pao2*7.50062]
+  data[unit_pao2 == 'kilopascal', max_pao2 := max_pao2*7.50062]
+  data[unit_pao2 == 'kilopascal', min_pao2 := min_pao2*7.50062]
 
   if(!all(unique(data$unit_pao2) %in% c("kilopascal", "millimeter mercury column", NA))){
     warning("pao2 contains an unknown unit of measure. Assuming values are millimeter mercury column")
@@ -142,11 +142,11 @@ fix_apache_ii_units <- function(data){
   data[, unit_pao2 := "millimeter mercury column"]
 
   #### Default unit for hematocrit is percent
-  data[unit_hematocrit <= 'liter per liter', max_hematocrit*100]
-  data[unit_hematocrit <= 'liter per liter', min_hematocrit*100]
+  data[unit_hematocrit == 'liter per liter', max_hematocrit := max_hematocrit*100]
+  data[unit_hematocrit == 'liter per liter', min_hematocrit := min_hematocrit*100]
 
-  data[unit_hematocrit <= 'ratio', max_hematocrit*100]
-  data[unit_hematocrit <= 'ratio', min_hematocrit*100]
+  data[unit_hematocrit == 'ratio', max_hematocrit := max_hematocrit*100]
+  data[unit_hematocrit == 'ratio', min_hematocrit := min_hematocrit*100]
 
   if(!all(unique(data$unit_hematocrit) %in% c("liter per liter", "percent", "ratio", NA))){
     warning("hematocrit contains an unknown unit of measure. Assuming values are liter per liter")
@@ -155,8 +155,8 @@ fix_apache_ii_units <- function(data){
 
   #### Default unit for sodium is millimole per liter.
   #### This is also the same as milliequivalent per liter
-  data[unit_sodium <= 'millimole per deciliter', max_sodium*10]
-  data[unit_sodium <= 'millimole per deciliter', min_sodium*10]
+  data[unit_sodium == 'millimole per deciliter', max_sodium := max_sodium*10]
+  data[unit_sodium == 'millimole per deciliter', min_sodium := min_sodium*10]
 
   if(!all(unique(data$unit_sodium) %in% c("millimole per liter", "millimole per deciliter",
                                           "milliequivalent per liter", NA))){
@@ -166,8 +166,8 @@ fix_apache_ii_units <- function(data){
 
   #### Default unit for potassium is millimole per liter.
   #### Which is the same as milliequivalent per liter
-  data[unit_potassium <= 'millimole per deciliter', max_potassium*10]
-  data[unit_potassium <= 'millimole per deciliter', min_potassium*10]
+  data[unit_potassium == 'millimole per deciliter', max_potassium := max_potassium*10]
+  data[unit_potassium == 'millimole per deciliter', min_potassium := min_potassium*10]
 
   if(!all(unique(data$unit_potassium) %in% c("millimole per liter", "millimole per deciliter",
                                              "milliequivalent per liter", NA))){
@@ -176,14 +176,14 @@ fix_apache_ii_units <- function(data){
   data[, unit_potassium := "millimole per liter"]
 
   #### Default unit for creatinine is milligram per deciliter
-  data[unit_creatinine <= 'micromole per liter', max_creatinine*0.0113]
-  data[unit_creatinine <= 'micromole per liter', min_creatinine*0.0113]
+  data[unit_creatinine == 'micromole per liter', max_creatinine := max_creatinine*0.0113]
+  data[unit_creatinine == 'micromole per liter', min_creatinine := min_creatinine*0.0113]
 
-  data[unit_creatinine <= 'millimole per liter', max_creatinine*11.312]
-  data[unit_creatinine <= 'millimole per liter', min_creatinine*11.312]
+  data[unit_creatinine == 'millimole per liter', max_creatinine := max_creatinine*11.312]
+  data[unit_creatinine == 'millimole per liter', min_creatinine := min_creatinine*11.312]
 
-  data[unit_creatinine <= 'milligram per liter', max_creatinine*0.1]
-  data[unit_creatinine <= 'milligram per liter', min_creatinine*0.1]
+  data[unit_creatinine == 'milligram per liter', max_creatinine := max_creatinine*0.1]
+  data[unit_creatinine == 'milligram per liter', min_creatinine := min_creatinine*0.1]
 
   if(!all(unique(data$unit_creatinine) %in% c("milligram per deciliter", "micromole per liter",
                                               "millimole per liter", "milligram per deciliter", NA))){
