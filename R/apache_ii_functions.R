@@ -89,9 +89,10 @@ fix_apache_ii_units <- function(data){
 
   data <- as.data.table(data)
 
-  #### Default unit for temperature is celsius
-  data[unit_temp == 'degree Fahrenheit', max_temp := (max_temp-32)*5/9]
-  data[unit_temp == 'degree Fahrenheit', min_temp := (min_temp-32)*5/9]
+  #### Default unit for temperature is celsius.
+  #### It's more accurate to divide based on values instead of what the unit says.
+  data[max_temp > 50, max_temp := (max_temp-32)*5/9]
+  data[min_temp > 50, min_temp := (min_temp-32)*5/9]
 
   if(!all(unique(data$unit_temp) %in% c("degree Celsius", "degree Fahrenheit", NA))){
     warning("Temperature contains an unknown unit of measure. Assuming values are in Celsius")
