@@ -142,6 +142,15 @@ fix_apache_ii_units <- function(data){
   }
   data[, unit_pao2 := "millimeter mercury column"]
 
+  #### Default unit for paco2 is millimeter mercury column
+  data[unit_paco2 == 'kilopascal', max_paco2 := max_paco2*7.50062]
+  data[unit_paco2 == 'kilopascal', min_paco2 := min_paco2*7.50062]
+
+  if(!all(unique(data$unit_paco2) %in% c("kilopascal", "millimeter mercury column", NA))){
+    warning("paco2 contains an unknown unit of measure. Assuming values are millimeter mercury column")
+  }
+  data[, unit_paco2 := "millimeter mercury column"]
+
   #### Default unit for hematocrit is percent
   data[unit_hematocrit == 'liter per liter', max_hematocrit := max_hematocrit*100]
   data[unit_hematocrit == 'liter per liter', min_hematocrit := min_hematocrit*100]
