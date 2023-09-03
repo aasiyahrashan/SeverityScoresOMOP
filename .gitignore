@@ -1,3 +1,5 @@
 .Rproj.user/
 secrets.r
 .Rhistory
+inst/ccaa_concepts.csv
+inst/cchic_concepts.csv
