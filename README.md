@@ -26,7 +26,7 @@
     ### Standardise units of measure and calculate the APACHE II score.
     data <- fix_apache_ii_units(data)
     data <- calculate_apache_ii_score(data)
-    ````
+````
 
 #### TODO
 - Adapt the SQL queries to work for OMOP 5.3.1
