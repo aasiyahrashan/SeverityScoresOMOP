@@ -48,7 +48,7 @@ left join {schema}.concept c_unit
 on m.unit_concept_id = c_unit.concept_id
 and m.unit_concept_id is not null
 -- want min or max values for each visit each day.
-GROUP BY adm.person_id, adm.person_source_value, adm.age, adm.gender,
+GROUP BY adm.person_id, adm.age, adm.gender,
          adm.visit_occurrence_id, adm.visit_detail_id,
 		 adm.icu_admission_datetime,
 		 DATE_PART('day', coalesce(m.measurement_datetime, m.measurement_date) - adm.icu_admission_datetime)
