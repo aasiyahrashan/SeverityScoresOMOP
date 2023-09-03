@@ -1,6 +1,6 @@
 #' Calculates emergency admission variable for APACHE II. Assumes elective if there is no data.
 #' @param data Dataframe containing physiology variables and units of measure.
-#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
 #'
 #' @return A data frame with the physiology values converted to the default units of measure specified.
 #' @import data.table
@@ -19,7 +19,7 @@ emergency_admission <- function(data){
 
 #' Calculates renal failure variable for APACHE II. Assumes no renal failure if no data.
 #' @param data Dataframe containing physiology variables and units of measure.
-#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
 #'
 #' @return A data frame with the physiology values converted to the default units of measure specified.
 #' @import data.table
@@ -38,7 +38,7 @@ renal_failure <- function(data){
 
 #' Calculates comorbidity variable for APACHE II. Assumes no comorbidities if no data.
 #' @param data Dataframe containing physiology variables and units of measure.
-#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
 #'
 #' @return A data frame with the physiology values converted to the default units of measure specified.
 #' @import data.table
@@ -57,7 +57,7 @@ comorbidities <- function(data){
 
 #' Calculates mean arterial pressure if not already calculated.
 #' @param data Dataframe containing physiology variables and units of measure.
-#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
 #'
 #' @return A data frame with the physiology values converted to the default units of measure specified.
 #' @import data.table
@@ -80,7 +80,7 @@ mean_arterial_pressure <- function(data){
 #' Assumes units of measure are encoded in OMOP using the UCUM source vocabulary
 #' Throws a warning if the unit of measure is not recognised. Assumes the default unit of measure if not available.
 #' @param data Dataframe containing physiology variables and units of measure.
-#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
 #'
 #' @return A data frame with the physiology values converted to the default units of measure specified.
 #' @import data.table
@@ -222,7 +222,7 @@ fix_apache_ii_units <- function(data){
 #' Assumes the units of measure have been fixed using the fix_apache_ii_units function.
 #' Missing data is handled using normal imputation
 #' @param data Dataframe containing physiology variables and units of measure.
-#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
 #'
 #' @return A data frame with a variable containing the apache II score calculated.
 #' @import data.table

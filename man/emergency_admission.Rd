@@ -8,7 +8,7 @@ emergency_admission(data)
 }
 \arguments{
 \item{data}{Dataframe containing physiology variables and units of measure.
-Should be the output of the get_score_variables function with the 'severity score parameter set to APACHEII"}
+Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"}
 }
 \value{
 A data frame with the physiology values converted to the default units of measure specified.

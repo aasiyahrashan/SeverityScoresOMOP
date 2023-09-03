@@ -17,14 +17,14 @@ postgres_connect <- function(host, dbname, port, user, password){
 }
 
 #' Queries the postgres database to get variables required for the severity score specified.
-#' Uses visit detail as table containing ICU admission information. If not available, uses visit_occurrence.
+#' Assumes visit detail table contains ICU admission information. If not available, uses visit_occurrence.
 #' @param postgres_conn A connection object to the postgres database
 #' @param schema The name of the schema you want to query.
 #' @param start_date The earliest ICU admission date/datetime. Needs to be in character format.
 #' @param end_date As above, but for last date
 #' @param min_day The number of days since ICU admission to get physiology data for. Starts with 0
 #' @param max_day The number of days since ICU admision to get physiology data for.
-#' @param dataset_name Describes which concept codes to select. Can only be CCHIC at the moment.
+#' @param dataset_name Describes which concept codes to select. Has to match *_concepts.csv file name.
 #' @param severity_score The name of the severity score to calculate. Only APACHE II at the moment.
 #'
 #' @import lubridate

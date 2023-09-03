@@ -3,7 +3,7 @@
 \name{get_score_variables}
 \alias{get_score_variables}
 \title{Queries the postgres database to get variables required for the severity score specified.
-Uses visit detail as table containing ICU admission information. If not available, uses visit_occurrence.}
+Assumes visit detail table contains ICU admission information. If not available, uses visit_occurrence.}
 \usage{
 get_score_variables(
   postgres_conn,
@@ -29,11 +29,11 @@ get_score_variables(
 
 \item{max_day}{The number of days since ICU admision to get physiology data for.}
 
-\item{dataset_name}{Describes which concept codes to select. Can only be CCHIC at the moment.}
+\item{dataset_name}{Describes which concept codes to select. Has to match *_concepts.csv file name.}
 
 \item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
 }
 \description{
 Queries the postgres database to get variables required for the severity score specified.
-Uses visit detail as table containing ICU admission information. If not available, uses visit_occurrence.
+Assumes visit detail table contains ICU admission information. If not available, uses visit_occurrence.
 }
