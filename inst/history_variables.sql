@@ -11,8 +11,10 @@ with icu_admission_details as (
 	-- this should contain ICU stay information, if it exists at all
 	left join {schema}.visit_detail vd
 	on p.person_id = vd.person_id
-	where COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) >= '{start_date}'
-	and COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) < '{end_date}'
+	where COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+	              vo.visit_start_datetime, vo.visit_start_date) >= '{start_date}'
+	and COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+	              vo.visit_start_datetime, vo.visit_start_date) < '{end_date}'
 
 )
 

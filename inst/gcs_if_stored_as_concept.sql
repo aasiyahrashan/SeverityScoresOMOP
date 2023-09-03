@@ -11,15 +11,18 @@ with icu_admission_details as (
 	p.person_id
 	, vo.visit_occurrence_id
 	, vd.visit_detail_id
-	, COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) as icu_admission_datetime
+	, COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+	           vo.visit_start_datetime, vo.visit_start_date) as icu_admission_datetime
 	from {schema}.person p
 	inner join {schema}.visit_occurrence vo
 	on p.person_id = vo.person_id
 	-- this should contain ICU stay information, if it exists at all
 	left join {schema}.visit_detail vd
 	on p.person_id = vd.person_id
-	where COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) >= '{start_date}'
-	and COALESCE(vd.visit_detail_start_datetime, vo.visit_start_datetime) < '{end_date}'
+	where COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+	               vo.visit_start_datetime, vo.visit_start_date) >= '{start_date}'
+	and COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+	             vo.visit_start_datetime, vo.visit_start_date) < '{end_date}'
 
 ),
 --- Making sure each component of the score is measured at the same time, so we're not
@@ -29,8 +32,8 @@ select
 adm.person_id,
 adm.visit_occurrence_id,
 adm.visit_detail_id,
-DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) as days_in_icu,
-m.measurement_datetime
+DATE_PART('day', coalesce(m.measurement_datetime, m.measurement_date) - adm.icu_admission_datetime) as days_in_icu,
+coalesce(m.measurement_datetime, m.measurement_date) as measurement_datetime
 --- The max here is just a method of getting the output into wide format.
 -- There shouldn't be more than one measurement at exactly the same time.
 , MAX(CASE WHEN m.measurement_concept_id = '3016335' then m.value_as_concept_id END) gcs_eye
@@ -42,8 +45,8 @@ left join {schema}.measurement m
 on adm.person_id = m.person_id
 and adm.visit_occurrence_id = m.visit_occurrence_id
 and (adm.visit_detail_id = m.visit_detail_id or adm.visit_detail_id is null)
-and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) >= {min_day}
-and DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime) < {max_day}
+and DATE_PART('day', coalesce(m.measurement_datetime, m.measurement_date) - adm.icu_admission_datetime) >= {min_day}
+and DATE_PART('day', coalesce(m.measurement_datetime, m.measurement_date) - adm.icu_admission_datetime) < {max_day}
 --- Making sure we get gcs values only. The variables become null otherwise.
 where value_as_concept_id is not null
 and measurement_concept_id IN ('3016335', '3008223', '3009094')
@@ -51,8 +54,8 @@ and measurement_concept_id IN ('3016335', '3008223', '3009094')
 group by
 	adm.person_id, adm.visit_occurrence_id, adm.visit_detail_id,
 	adm.icu_admission_datetime,
-	DATE_PART('day', m.measurement_datetime - adm.icu_admission_datetime),
-	m.measurement_datetime
+	DATE_PART('day', coalesce(m.measurement_datetime, m.measurement_date) - adm.icu_admission_datetime),
+	coalesce(m.measurement_datetime, m.measurement_date)
 	),
 ----- Converting the concept IDs to numbers.
 gcs_numbers as (
