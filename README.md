@@ -25,6 +25,7 @@
     
     ### Standardise units of measure and calculate the APACHE II score.
     data <- fix_apache_ii_units(data)
+    data <- fix_implausible_values_apache_ii(data)
     data <- calculate_apache_ii_score(data)
 ````
 

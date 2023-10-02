@@ -217,6 +217,153 @@ fix_apache_ii_units <- function(data){
   data
 }
 
+#' Removes implausible values from variables used to calculate the APACHE II score.
+#' Assumes the units of measure have been fixed using the fix_apache_ii_units function.
+#' @param data Dataframe containing physiology variables and units of measure.
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
+#'
+#' @return A data frame with implausible physiology values deleted.
+#' @import data.table
+#' @export
+fix_implausible_values_apache_ii <- function(data){
+
+  ### Temperature.
+  data[(max_temp < 25 | max_temp > 49.9) & unit_temp == "degree Celsius", max_temp := NA]
+
+  data[(min_temp < 25 | min_temp > 49.9) & unit_temp == "degree Celsius", min_temp := NA]
+
+  if(!all(unique(data$unit_temp) %in% c("degree Celsius", NA))){
+    warning("Temperature values are not in celcius. Please fix before attempting to delete implausible values.")
+  }
+
+  #### white cell count
+  data[(max_wcc < 0 | max_wcc > 9999) & unit_wcc == "billion per liter", max_wcc := NA]
+
+  data[(min_wcc < 0 | min_wcc > 9999) & unit_wcc == "billion per liter", min_wcc := NA]
+
+  if(!all(unique(data$unit_wcc) %in% c("billion per liter", NA))){
+    warning("White cell count values are not in billion per liter. Please fix before attempting to delete implausible values.")
+  }
+
+  ### FiO2.
+  data[(max_fio2 < 0.21 | max_fio2 > 1) & unit_fio2 == "ratio", max_fio2 := NA]
+
+  data[(min_fio2 < 0.21 | min_fio2 > 1) & unit_fio2 == "ratio", min_fio2 := NA]
+
+  if(!all(unique(data$unit_fio2) %in% c("ratio", NA))){
+    warning("FiO2 values are not in ratio. Please fix before attempting to delete implausible values.")
+  }
+
+  #### PaO2
+  data[(max_pao2 < 20 | max_pao2 > 400) &
+         unit_pao2 == 'millimeter mercury column', max_pao2 := NA]
+
+  data[(min_pao2 < 20 | min_pao2 > 400) &
+         unit_pao2 == 'millimeter mercury column', min_pao2 := NA]
+
+  if(!all(unique(data$unit_pao2) %in% c("millimeter mercury column", NA))){
+    warning("pao2 is not in millimeter mercury column. Please fix before attempting to delete implausible values.")
+  }
+
+  #### PaCO2.
+  data[(max_paco2 < 0 | max_paco2 > 376) &
+         unit_paco2 == "millimeter mercury column", max_paco2 := NA]
+
+  data[(min_paco2 < 0 | min_paco2 > 376)
+       & unit_paco2 == "millimeter mercury column", min_paco2 := NA]
+
+  if(!all(unique(data$unit_paco2) %in% c("millimeter mercury column", NA))){
+    warning("pcao2 is not in millimeter mercury column. Please fix before attempting to delete implausible values.")
+  }
+
+  #### Hematocrit
+  data[(max_hematocrit < 0 | max_hematocrit > 100) &
+         unit_hematocrit == 'percent', max_hematocrit := NA]
+
+  data[(min_hematocrit < 0 | min_hematocrit > 100) &
+         unit_hematocrit == 'percent', min_hematocrit := NA]
+
+  if(!all(unique(data$unit_hematocrit) %in% c("percent", NA))){
+    warning("Hematocrit is not in percent. Please fix before attempting to delete implausible values.")
+  }
+
+  #### Sodium
+  data[(max_sodium < 40 | max_sodium > 260) &
+         unit_sodium == 'millimole per liter', max_sodium := NA]
+
+  data[(min_sodium < 40 | min_sodium > 260) &
+         unit_sodium == 'millimole per liter', min_sodium := NA]
+
+  if(!all(unique(data$unit_sodium) %in% c("millimole per liter", NA))){
+    warning("Sodium is not in millimole per liter. Please fix before attempting to delete implausible values.")
+  }
+
+  #### Potassium
+  data[(max_potassium < 1 | max_potassium > 9.9) &
+         unit_potassium == 'millimole per liter', max_potassium := NA]
+
+  data[(min_potassium < 1 | min_potassium > 9.9) &
+         unit_potassium == 'millimole per liter', min_potassium := NA]
+
+  if(!all(unique(data$unit_potassium) %in% c("millimole per liter", NA))){
+    warning("Potassium is not in millimole per liter. Please fix before attempting to delete implausible values.")
+  }
+
+  #### Creatinine
+  data[(max_creatinine < 0.1 | max_creatinine > 39) &
+         unit_creatinine == 'milligram per deciliter', max_creatinine := NA]
+
+  data[(min_creatinine < 0.1 | min_creatinine > 39) &
+         unit_creatinine == 'milligram per deciliter', min_creatinine := NA]
+
+  if(!all(unique(data$unit_creatinine) %in% c("milligram per deciliter", NA))){
+    warning("Creatinine is not in milligram per deciliter. Please fix before attempting to delete implausible values.")
+  }
+
+  #### Bicarbonate
+  data[(max_bicarbonate < 1 | max_bicarbonate > 59) &
+         unit_bicarbonate == "millimole per liter", max_bicarbonate := NA]
+
+  data[(min_bicarbonate < 1 | min_bicarbonate > 59) &
+         unit_bicarbonate == "millimole per liter", min_bicarbonate := NA]
+
+  if(!all(unique(data$unit_bicarbonate) %in% c("millimole per liter", NA))){
+    warning("Bicarbonate is not in milligram per deciliter. Please fix before attempting to delete implausible values.")
+  }
+
+  #### Respiratory rate
+  data[max_rr < 2 | max_rr > 79, max_rr := NA]
+  data[min_rr < 2 | min_rr > 79, min_rr := NA]
+
+  #### Heart rate
+  data[max_hr < 10 | max_hr > 299, max_hr := NA]
+  data[min_hr < 10 | min_hr > 299, min_hr := NA]
+
+  #### pH
+  data[max_ph < 6.1 | max_ph > 9, max_ph := NA]
+  data[min_ph < 6.1 | min_ph > 9, min_ph := NA]
+
+  #### Blood pressure. Doing it separately for MAP and for SBP and DBP.
+  if(!"min_map" %in% names(data)){
+    ### Assuming bp variables will be called sbp and dbp if not map
+    if ("min_dbp" %in% names(data) &
+        "min_sbp" %in% names(data)){
+      data[max_sbp < 20 | max_sbp > 299, max_sbp := NA]
+      data[min_sbp < 20 | min_sbp > 299, min_sbp := NA]
+
+      data[max_dbp < 0 | max_dbp > 200, max_dbp := NA]
+      data[min_dbp < 0 | min_dbp > 200, min_dbp := NA]
+    }
+  }
+
+  if("min_map" %in% names(data)){
+    data[max_map < 6 | max_map > 233, max_map := NA]
+    data[min_map < 6 | min_map > 233, min_map := NA]
+  }
+
+  data
+}
+
 
 #' Calculates the APACHE II score.
 #' Assumes the units of measure have been fixed using the fix_apache_ii_units function.
