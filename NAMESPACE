@@ -2,6 +2,7 @@
 
 export(calculate_apache_ii_score)
 export(fix_apache_ii_units)
+export(fix_implausible_values_apache_ii)
 export(get_score_variables)
 export(postgres_connect)
 import(DBI)
