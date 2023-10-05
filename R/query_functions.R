@@ -11,7 +11,7 @@
 #' @importFrom odbc odbc
 #' @export
 omop_connect <- function(driver, host, dbname, port, user, password){
-  if (driver = "PostgreSQL"){
+  if (driver == "PostgreSQL"){
     DBI::dbConnect(
       RPostgres::Postgres(),
       host = host,
