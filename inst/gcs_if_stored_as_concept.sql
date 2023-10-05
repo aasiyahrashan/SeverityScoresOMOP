@@ -64,26 +64,24 @@ person_id,
 visit_occurrence_id,
 visit_detail_id,
 days_in_icu,
---- This does normal imputation so we don't lose the whole score if one component is missing.
---- This is valid for APACHE II, and most scores.
 case when gcs_eye = '45877537' then 1
 	 when gcs_eye = '45883351' then 2
 	 when gcs_eye = '45880465' then 3
 	 when gcs_eye = '45880466' then 4
-	 else 4 end gcs_eye,
+	 end gcs_eye,
 case when gcs_motor = '45878992' then 1
 	 when gcs_motor = '45878993' then 2
 	 when gcs_motor = '45879885' then 3
 	 when gcs_motor = '45882047' then 4
 	 when gcs_motor = '45880467' then 5
 	 when gcs_motor = '45880468' then 6
-	 else 6 end gcs_motor,
+	 end gcs_motor,
 case when gcs_verbal = '45877384' then 1
 	 when gcs_verbal = '45883352' then 2
 	 when gcs_verbal = '45877601' then 3
 	 when gcs_verbal = '45883906' then 4
 	 when gcs_verbal = '45877602' then 5
-	 else 5 end gcs_verbal
+	 end gcs_verbal
 from gcs_concepts
 )
 ---- Getting min and max per day.
