@@ -31,6 +31,11 @@
     print(data$apache_ii_score_no_imputation)
     data <- calculate_apache_ii_score(data, imputation = "normal")
     print(data$apache_ii_score)
+    
+    #### Inspect the distribution and availability of variables.
+    availability_dataframe <- get_physiology_variable_availability(data)
+    View(availability_dataframe)
+    get_physiology_variable_distributions(data)
 ````
 
 #### TODO
