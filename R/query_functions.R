@@ -10,7 +10,7 @@
 #' @importFrom RPostgres Postgres
 #' @importFrom odbc odbc
 #' @export
-connect <- function(host, dbname, port, user, password){
+connect_omop <- function(driver, host, dbname, port, user, password){
   if (str_contains(driver, "PostgreSQL")){
     DBI::dbConnect(
       RPostgres::Postgres(),
@@ -27,11 +27,10 @@ connect <- function(host, dbname, port, user, password){
       database = dbname,
       uid = user,
       pwd = password)
-    }
+  }
 }
-rstudioapi::addTheme('https://raw.githubusercontent.com/johnnybarrels/rstudio-one-dark-pro-theme/master/OneDarkPro.rstheme', apply=TRUE, force=TRUE)
 
-#' Queries a database to get variables required for a specified severity score. Assumes visit detail 
+#' Queries a database to get variables required for a specified severity score. Assumes visit detail
 #' table contains ICU admission information. If not available, uses visit_occurrence.
 #' @param conn A connection object to a database
 #' @param schema The name of the schema you want to query.
@@ -53,7 +52,7 @@ get_score_variables <- function(conn, schema, start_date, end_date,
 
   #### Getting the list of concept IDs required for the score, and creating SQL lines from them.
   concepts <- read_csv(system.file(glue("{dataset_name}_concepts.csv"),
-                          package = "SeverityScoresOMOP")) %>%
+                                   package = "SeverityScoresOMOP")) %>%
     filter(score == severity_score)
 
   ##### Getting concepts stored in the measurement table.
@@ -63,7 +62,7 @@ get_score_variables <- function(conn, schema, start_date, end_date,
     #### GCS can sometimes be stored as a concept ID instead of number.
     #### These need a separate query.
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-             omop_variable == "value_as_concept_id")) %>%
+               omop_variable == "value_as_concept_id")) %>%
     mutate(max_query = glue(
       ", MAX(CASE WHEN m.measurement_concept_id = {concept_id} then m.{omop_variable} END) AS max_{short_name}"),
       min_query = glue(
@@ -73,8 +72,8 @@ get_score_variables <- function(conn, schema, start_date, end_date,
 
   ## Collapsing all the queries into a string.
   variables_required <- glue(glue_collapse(measurement_concepts$max_query, sep = "\n"), "\n",
-                      glue_collapse(measurement_concepts$min_query, sep = "\n"), "\n",
-                      glue_collapse(measurement_concepts$unit_query, sep = "\n"))
+                             glue_collapse(measurement_concepts$min_query, sep = "\n"), "\n",
+                             glue_collapse(measurement_concepts$unit_query, sep = "\n"))
 
   #### Importing the rest of the query from the text file.
   raw_sql <- readr::read_file(system.file("physiology_variables.sql",
@@ -92,7 +91,7 @@ get_score_variables <- function(conn, schema, start_date, end_date,
   ######### Otherwise, there's no way of getting the min and max
   gcs_concepts <- concepts %>%
     filter((short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-               omop_variable == "value_as_concept_id"))
+              omop_variable == "value_as_concept_id"))
 
   if(nrow(gcs_concepts > 0)){
     ###### The SQL file currently has the GCS LOINC concepts hardocded.

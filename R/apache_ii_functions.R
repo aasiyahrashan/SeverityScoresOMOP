@@ -57,9 +57,11 @@ comorbidities <- function(data){
 
 #' Calculates mean arterial pressure if not already calculated.
 #' @param data Dataframe containing physiology variables and units of measure.
-#' Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"
+#' Should be the output of the get_score_variables function with the 'severity
+#' score parameter set to APACHE II"
 #'
-#' @return A data frame with the physiology values converted to the default units of measure specified.
+#' @return A data frame with the physiology values converted to the default
+#'         units of measure specified.
 #' @import data.table
 mean_arterial_pressure <- function(data){
 
@@ -216,7 +218,6 @@ fix_apache_ii_units <- function(data){
 
   data
 }
-
 
 #' Calculates the APACHE II score.
 #' Assumes the units of measure have been fixed using the fix_apache_ii_units function.
