@@ -409,19 +409,19 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
 
   if(imputation == "normal"){
     ### Subscores are assigned a score of 0 if there is normal imputation, and no data for variables.
-    data[, subscore_variables := 0]
+    data[, (subscore_variables) := as.integer(0)]
     total_variable = "apache_ii_score"
 
   } else if (imputation == "none"){
     ### The score variable is empty if there is no physiology value available.
-    data[, subscore_variables := NA]
+    data[, (subscore_variables) := as.integer(NA)]
     total_variable = "apache_ii_score_no_imputation"
   } else {
     warning("The imputation type should either be 'normal' or 'none'")
   }
 
   #### Temperature. Need to calculate for both min and max to work out which is worse.
-  data[(max_temp < c(30)) | (max_temp > c(40)), max_temp_ap_ii := 4]
+  data[(max_temp < 30 | max_temp > 40), max_temp_ap_ii := 4]
   data[(max_temp %between% c(30,31.9)) | (max_temp %between% c(39,40)), max_temp_ap_ii := 3]
   data[max_temp %between% c(32,33.9), max_temp_ap_ii := 2]
   data[(max_temp %between% c(34,35.9)) | (max_temp %between% c(38.5,38.9)), max_temp_ap_ii := 1]
@@ -587,7 +587,7 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
   data[renal_failure == 1, max_creat_ap_ii*2]
 
   #### Age
-  data[age < 44, age_ap_ii := 0]
+  data[age < 45, age_ap_ii := 0]
   data[age %between% c(45, 54), age_ap_ii := 2]
   data[age %between% c(55, 64), age_ap_ii := 3]
   data[age %between% c(65, 74), age_ap_ii := 5]
@@ -600,6 +600,7 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
   data <- emergency_admission(data)
 
   #### chronic health score
+  data[comorbidity == 0, chronic_ap_ii := 0]
   data[comorbidity > 0 & emergency_admission == 0, chronic_ap_ii := 2]
   data[comorbidity > 0 & emergency_admission == 1, chronic_ap_ii := 5]
 
