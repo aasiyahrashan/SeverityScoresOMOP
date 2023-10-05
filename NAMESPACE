@@ -3,7 +3,7 @@
 export(calculate_apache_ii_score)
 export(fix_apache_ii_units)
 export(get_score_variables)
-export(postgres_connect)
+export(omop_connect)
 import(DBI)
 import(data.table)
 import(dplyr)

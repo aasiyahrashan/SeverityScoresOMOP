@@ -10,7 +10,7 @@
 #' @importFrom RPostgres Postgres
 #' @importFrom odbc odbc
 #' @export
-connect_omop <- function(driver, host, dbname, port, user, password){
+omop_connect <- function(driver, host, dbname, port, user, password){
   if (str_contains(driver, "PostgreSQL")){
     DBI::dbConnect(
       RPostgres::Postgres(),
