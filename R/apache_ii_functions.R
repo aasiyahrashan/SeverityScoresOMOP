@@ -421,41 +421,41 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
   }
 
   #### Temperature. Need to calculate for both min and max to work out which is worse.
-  data[(max_temp < 30 | max_temp > 40), max_temp_ap_ii := 4]
-  data[(max_temp %between% c(30,31.9)) | (max_temp %between% c(39,40)), max_temp_ap_ii := 3]
-  data[max_temp %between% c(32,33.9), max_temp_ap_ii := 2]
-  data[(max_temp %between% c(34,35.9)) | (max_temp %between% c(38.5,38.9)), max_temp_ap_ii := 1]
-  data[max_temp %between% c(36,38.4), max_temp_ap_ii := 0]
+  data[(min_temp < 30 | min_temp >= 41), min_temp_ap_ii := 4]
+  data[(min_temp >= 30 & min_temp < 32) | (min_temp >= 39 & min_temp < 41), min_temp_ap_ii := 3]
+  data[(min_temp >= 32 & min_temp < 34), min_temp_ap_ii := 2]
+  data[(min_temp >= 34 & min_temp < 36) | (min_temp >= 38.5 & min_temp < 38.9), min_temp_ap_ii := 1]
+  data[(min_temp >= 36 & min_temp < 38.5), min_temp_ap_ii := 0]
 
-  data[(min_temp < c(30)) | (min_temp > c(40)), min_temp_ap_ii := 4]
-  data[(min_temp %between% c(30,31.9)) | (min_temp %between% c(39,40)), min_temp_ap_ii := 3]
-  data[min_temp %between% c(32,33.9), min_temp_ap_ii := 2]
-  data[(min_temp %between% c(34,35.9)) | (min_temp %between% c(38.5,38.9)), min_temp_ap_ii := 1]
-  data[min_temp %between% c(36,38.4), min_temp_ap_ii := 0]
+  data[(max_temp < 30 | max_temp >= 41), max_temp_ap_ii := 4]
+  data[(max_temp >= 30 & max_temp < 32) | (max_temp >= 39 & max_temp < 41), max_temp_ap_ii := 3]
+  data[(max_temp >= 32 & max_temp < 34), max_temp_ap_ii := 2]
+  data[(max_temp >= 34 & max_temp < 36) | (max_temp >= 38.5 & max_temp < 38.9), max_temp_ap_ii := 1]
+  data[(max_temp >= 36 & max_temp < 38.5), max_temp_ap_ii := 0]
 
   ##### White blood cell count
-  data[(min_wcc > c(2.999)), min_wcc_ap_ii := 0]
-  data[(min_wcc > c(14.999)), min_wcc_ap_ii := 1]
-  data[(min_wcc < c(3.000)) | (min_wcc > c(19.999)), min_wcc_ap_ii := 2]
-  data[(min_wcc < c(1.000)) | (min_wcc > c(39.999)), min_wcc_ap_ii:= 4]
+  data[(min_wcc >= 3 & min_wcc < 15), min_wcc_ap_ii := 0]
+  data[(min_wcc >= 15 & min_wcc < 20), min_wcc_ap_ii := 1]
+  data[(min_wcc >= 20 & min_wcc < 40) | (min_wcc >=1 & min_wcc < 3), min_wcc_ap_ii := 2]
+  data[(min_wcc >= 40 | min_wcc < 1), min_wcc_ap_ii:= 4]
 
-  data[(max_wcc > c(2.999)), max_wcc_ap_ii := 0]
-  data[(max_wcc > c(14.999)), max_wcc_ap_ii := 1]
-  data[(max_wcc < c(3.000)) | (max_wcc > c(19.999)), max_wcc_ap_ii := 2]
-  data[(max_wcc < c(1.000)) | (max_wcc > c(39.999)), max_wcc_ap_ii:= 4]
+  data[(max_wcc >= 3 & max_wcc < 15), max_wcc_ap_ii := 0]
+  data[(max_wcc >= 15 & max_wcc < 20), max_wcc_ap_ii := 1]
+  data[(max_wcc >= 20 & max_wcc < 40) | (max_wcc >=1 & max_wcc < 3), max_wcc_ap_ii := 2]
+  data[(max_wcc >= 40 | max_wcc < 1), max_wcc_ap_ii:= 4]
 
   ###### Mean arterial pressure. Calculating MAP first.
   data <- mean_arterial_pressure(data)
 
-  data[(min_map < c(50)) | (min_map > c(159)), min_map_ap_ii := 4]
-  data[min_map %between% c(130,159), min_map_ap_ii := 3]
-  data[(min_map %between% c(50,69)) | (min_map %between% c(110,129)), min_map_ap_ii := 2]
-  data[min_map %between% c(70,109), min_map_ap_ii := 0]
+  data[(min_map >= 160 | min_map < 50), min_map_ap_ii := 4]
+  data[(min_map >= 130 & min_map < 160), min_map_ap_ii := 3]
+  data[(min_map >= 50 & min_map < 70) | (min_map >= 110 & min_map < 130), min_map_ap_ii := 2]
+  data[(min_map >= 70 & min_map < 110), min_map_ap_ii := 0]
 
-  data[(max_map < c(50)) | (max_map > c(159)), max_map_ap_ii := 4]
-  data[max_map %between% c(130,159), max_map_ap_ii := 3]
-  data[(max_map %between% c(50,69)) | (max_map %between% c(110,129)), max_map_ap_ii := 2]
-  data[max_map %between% c(70,109), max_map_ap_ii := 0]
+  data[(max_map >= 160 | max_map < 50), max_map_ap_ii := 4]
+  data[(max_map >= 130 & max_map < 160), max_map_ap_ii := 3]
+  data[(max_map >= 50 & max_map < 70) | (max_map >= 110 & max_map < 130), max_map_ap_ii := 2]
+  data[(max_map >= 70 & max_map < 110), max_map_ap_ii := 0]
 
   #### AADO2
   ### Calculating the A-a gradient. The highest value is worst, so picking the ones that match it.
@@ -472,93 +472,107 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
   data[max_fio2 < 0.5 & min_pao2 > 70, aado2_ap_ii := 0]
 
   #### Hematocrit
-  data[min_hematocrit > c(29), min_hematocrit_ap_ii := 0]
-  data[(min_hematocrit > c(45.9)), min_hematocrit_ap_ii := 1]
-  data[(min_hematocrit < c(30)) | (min_hematocrit > c(49.9)), min_hematocrit_ap_ii := 2]
-  data[(min_hematocrit < c(20)) | (min_hematocrit > c(59.9)), min_hematocrit_ap_ii := 4]
+  data[(min_hematocrit >= 30 & min_hematocrit < 46), min_hematocrit_ap_ii := 0]
+  data[(min_hematocrit >= 46 & min_hematocrit < 50), min_hematocrit_ap_ii := 1]
+  data[(min_hematocrit >= 50 & min_hematocrit < 60) |
+         (min_hematocrit >= 20 & min_hematocrit < 30), min_hematocrit_ap_ii := 2]
+  data[(min_hematocrit >= 0 & min_hematocrit < 20) |
+         min_hematocrit >= 60, min_hematocrit_ap_ii := 4]
 
-  data[max_hematocrit > c(29), max_hematocrit_ap_ii := 0]
-  data[(max_hematocrit > c(45.9)), max_hematocrit_ap_ii := 1]
-  data[(max_hematocrit < c(30)) | (max_hematocrit > c(49.9)), max_hematocrit_ap_ii := 2]
-  data[(max_hematocrit < c(20)) | (max_hematocrit > c(59.9)), max_hematocrit_ap_ii := 4]
+  data[(max_hematocrit >= 30 & max_hematocrit < 46), max_hematocrit_ap_ii := 0]
+  data[(max_hematocrit >= 46 & max_hematocrit < 50), max_hematocrit_ap_ii := 1]
+  data[(max_hematocrit >= 50 & max_hematocrit < 60) |
+         (max_hematocrit >= 20 & max_hematocrit < 30), max_hematocrit_ap_ii := 2]
+  data[(max_hematocrit >= 0 & max_hematocrit < 20) |
+         max_hematocrit >= 60, max_hematocrit_ap_ii := 4]
 
   #### heart rate
-  data[min_hr %between% c(70,109), min_hr_ap_ii := 0]
-  data[(min_hr %between% c(55,69)) | (min_hr %between% c(110,139)), min_hr_ap_ii := 2]
-  data[(min_hr %between% c(40,54)) | (min_hr %between% c(140,179)), min_hr_ap_ii := 3]
-  data[(min_hr < c(40)) | (min_hr > c(179)), min_hr_ap_ii := 4]
+  data[(min_hr >= 70 & min_hr < 110), min_hr_ap_ii := 0]
+  data[(min_hr >= 55 & min_hr < 70) | (min_hr >= 110 & min_hr < 140), min_hr_ap_ii := 2]
+  data[(min_hr >= 40 & min_hr < 55) | (min_hr >= 140 & min_hr < 180), min_hr_ap_ii := 3]
+  data[(min_hr >= 180 | min_hr < 40), min_hr_ap_ii := 4]
 
-  data[max_hr %between% c(70,109), max_hr_ap_ii := 0]
-  data[(max_hr %between% c(55,69)) | (max_hr %between% c(110,139)), max_hr_ap_ii := 2]
-  data[(max_hr %between% c(40,54)) | (max_hr %between% c(140,179)), max_hr_ap_ii := 3]
-  data[(max_hr < c(40)) | (max_hr > c(179)), max_hr_ap_ii := 4]
+  data[(max_hr >= 70 & max_hr < 110), max_hr_ap_ii := 0]
+  data[(max_hr >= 55 & max_hr < 70) | (max_hr >= 110 & max_hr < 140), max_hr_ap_ii := 2]
+  data[(max_hr >= 40 & max_hr < 55) | (max_hr >= 140 & max_hr < 180), max_hr_ap_ii := 3]
+  data[(max_hr >= 180 | max_hr < 40), max_hr_ap_ii := 4]
 
   #### respiratory rate
-  data[min_rr %between% c(25,34), min_rr_ap_ii := 1]
-  data[min_rr %between% c(12,24), min_rr_ap_ii := 0]
-  data[min_rr %between% c(10,11), min_rr_ap_ii := 2]
-  data[min_rr %between% c(6,9) | (min_rr %between% c(35,49)), min_rr_ap_ii := 3]
-  data[(min_rr < c(6)) | (min_rr > c(49)), min_rr_ap_ii := 4]
+  data[(min_rr >= 12 & min_rr < 25), min_rr_ap_ii := 0]
+  data[(min_rr >= 25 & min_rr < 35) | (min_rr >= 10 & min_rr < 12), min_rr_ap_ii := 1]
+  data[(min_rr >= 6 & min_rr < 10), min_rr_ap_ii := 2]
+  data[(min_rr >= 35 & min_rr < 50), min_rr_ap_ii := 3]
+  data[(min_rr >= 50) | (min_rr < 6), min_rr_ap_ii := 4]
 
-  data[max_rr %between% c(25,34), max_rr_ap_ii := 1]
-  data[max_rr %between% c(12,24), max_rr_ap_ii := 0]
-  data[max_rr %between% c(10,11), max_rr_ap_ii := 2]
-  data[max_rr %between% c(6,9) | (max_rr %between% c(35,49)), max_rr_ap_ii := 3]
-  data[(max_rr < c(6)) | (max_rr > c(49)), max_rr_ap_ii := 4]
+  data[(max_rr >= 12 & max_rr < 25), max_rr_ap_ii := 0]
+  data[(max_rr >= 25 & max_rr < 35) | (max_rr >= 10 & max_rr < 12), max_rr_ap_ii := 1]
+  data[(max_rr >= 6 & max_rr < 10), max_rr_ap_ii := 2]
+  data[(max_rr >= 35 & max_rr < 50), max_rr_ap_ii := 3]
+  data[(max_rr >= 50) | (max_rr < 6), max_rr_ap_ii := 4]
 
   #### Ph and HCO3
   #### Use Ph if available. If not, use HCO3.
-  data[min_ph > c(7.32), min_ph_ap_ii := 0]
-  data[min_ph > c(7.49), min_ph_ap_ii := 1]
-  data[min_ph < c(7.33), min_ph_ap_ii := 2]
-  data[min_ph < c(7.25) | min_ph > c(7.59), min_ph_ap_ii := 3]
-  data[min_ph < c(7.16) | min_ph > c(7.69), min_ph_ap_ii := 4]
+  data[(min_ph >= 7.33 & min_ph < 7.5), min_ph_ap_ii := 0]
+  data[(min_ph >= 7.5 & min_ph < 7.6), min_ph_ap_ii := 1]
+  data[(min_ph >= 7.25 & min_ph < 7.33), min_ph_ap_ii := 2]
+  data[(min_ph >= 7.6 & min_ph < 7.7) | (min_ph >= 7.15 & min_ph < 7.25), min_ph_ap_ii := 3]
+  data[(min_ph >= 7.7 | min_ph < 7.15), min_ph_ap_ii := 4]
 
-  data[max_ph > c(7.32), max_ph_ap_ii := 0]
-  data[max_ph > c(7.49), max_ph_ap_ii := 1]
-  data[max_ph < c(7.33), max_ph_ap_ii := 2]
-  data[max_ph < c(7.25) | max_ph > c(7.59), max_ph_ap_ii := 3]
-  data[max_ph < c(7.16) | max_ph > c(7.69), max_ph_ap_ii := 4]
+  data[(max_ph >= 7.33 & max_ph < 7.5), max_ph_ap_ii := 0]
+  data[(max_ph >= 7.5 & max_ph < 7.6), max_ph_ap_ii := 1]
+  data[(max_ph >= 7.25 & max_ph < 7.33), max_ph_ap_ii := 2]
+  data[(max_ph >= 7.6 & max_ph < 7.7) | (max_ph >= 7.15 & max_ph < 7.25), max_ph_ap_ii := 3]
+  data[(max_ph >= 7.7 | max_ph < 7.15), max_ph_ap_ii := 4]
 
 
   ##### bicarbonate Will only get calculated if there is no ph
-  data[is.na(min_ph) & min_bicarbonate > c(21), min_bicarbonate_ap_ii := 0]
-  data[is.na(min_ph) & min_bicarbonate > c(31), min_bicarbonate_ap_ii := 1]
-  data[is.na(min_ph) & min_bicarbonate < c(22), min_bicarbonate_ap_ii := 2]
-  data[is.na(min_ph) & (min_bicarbonate < c(18) | min_bicarbonate > c(40)), min_bicarbonate_ap_ii := 3]
-  data[is.na(min_ph) & (min_bicarbonate < c(16) | min_bicarbonate > c(51)), min_bicarbonate_ap_ii := 4]
+  data[is.na(min_ph) & (min_bicarbonate >= 22 & min_bicarbonate < 32), min_bicarbonate_ap_ii := 0]
+  data[is.na(min_ph) &(min_bicarbonate >= 32 & min_bicarbonate < 41), min_bicarbonate_ap_ii := 1]
+  data[is.na(min_ph) & (min_bicarbonate >= 18 & min_bicarbonate < 22), min_bicarbonate_ap_ii := 2]
+  data[is.na(min_ph) &
+         (min_bicarbonate >= 15 & min_bicarbonate >= 18) |
+         (min_bicarbonate >= 41 & min_bicarbonate >= 52), min_bicarbonate_ap_ii := 3]
+  data[is.na(min_ph) & (min_bicarbonate < 15 | min_bicarbonate >= 52), min_bicarbonate_ap_ii := 4]
 
-  data[is.na(max_ph) & max_bicarbonate > c(21), max_bicarbonate_ap_ii := 0]
-  data[is.na(max_ph) & max_bicarbonate > c(31), max_bicarbonate_ap_ii := 1]
-  data[is.na(max_ph) & max_bicarbonate < c(22), max_bicarbonate_ap_ii := 2]
-  data[is.na(max_ph) & (max_bicarbonate < c(18) | max_bicarbonate > c(40)), max_bicarbonate_ap_ii := 3]
-  data[is.na(max_ph) & (max_bicarbonate < c(16) | max_bicarbonate > c(51)), max_bicarbonate_ap_ii := 4]
+  data[is.na(max_ph) & (max_bicarbonate >= 22 & max_bicarbonate < 32), max_bicarbonate_ap_ii := 0]
+  data[is.na(max_ph) &(max_bicarbonate >= 32 & max_bicarbonate < 41), max_bicarbonate_ap_ii := 1]
+  data[is.na(max_ph) & (max_bicarbonate >= 18 & max_bicarbonate < 22), max_bicarbonate_ap_ii := 2]
+  data[is.na(max_ph) &
+         (max_bicarbonate >= 15 & max_bicarbonate >= 18) |
+         (max_bicarbonate >= 41 & max_bicarbonate >= 52), max_bicarbonate_ap_ii := 3]
+  data[is.na(max_ph) & (max_bicarbonate < 15 | max_bicarbonate >= 52), max_bicarbonate_ap_ii := 4]
 
   ##### sodium
-  data[min_sodium > c(129), min_sodium_ap_ii := 0]
-  data[min_sodium > c(149), min_sodium_ap_ii := 1]
-  data[min_sodium < c(130) | min_sodium > c(154), min_sodium_ap_ii := 2]
-  data[min_sodium < c(120) | min_sodium > c(159), min_sodium_ap_ii := 3]
-  data[min_sodium < c(111) | min_sodium > c(179), min_sodium_ap_ii := 4]
+  data[(min_sodium >= 130 & min_sodium < 150), min_sodium_ap_ii := 0]
+  data[(min_sodium >= 150 & min_sodium < 155), min_sodium_ap_ii := 1]
+  data[(min_sodium >= 155 & min_sodium < 160) |
+         (min_sodium >= 120 & min_sodium < 130), min_sodium_ap_ii := 2]
+  data[(min_sodium >= 160 & min_sodium < 180) |
+         (min_sodium >= 111 & min_sodium < 120), min_sodium_ap_ii := 3]
+  data[(min_sodium >= 180 | min_sodium < 111), min_sodium_ap_ii := 4]
 
-  data[max_sodium > c(129), max_sodium_ap_ii := 0]
-  data[max_sodium > c(149), max_sodium_ap_ii := 1]
-  data[max_sodium < c(130) | max_sodium > c(154), max_sodium_ap_ii := 2]
-  data[max_sodium < c(120) | max_sodium > c(159), max_sodium_ap_ii := 3]
-  data[max_sodium < c(111) | max_sodium > c(179), max_sodium_ap_ii := 4]
+  data[(max_sodium >= 130 & max_sodium < 150), max_sodium_ap_ii := 0]
+  data[(max_sodium >= 150 & max_sodium < 155), max_sodium_ap_ii := 1]
+  data[(max_sodium >= 155 & max_sodium < 160) |
+         (max_sodium >= 120 & max_sodium < 130), max_sodium_ap_ii := 2]
+  data[(max_sodium >= 160 & max_sodium < 180) |
+         (max_sodium >= 111 & max_sodium < 120), max_sodium_ap_ii := 3]
+  data[(max_sodium >= 180 | max_sodium < 111), max_sodium_ap_ii := 4]
 
   #### potassium
-  data[min_potassium > c(3.4), min_potassium_ap_ii := 0]
-  data[min_potassium < c(3.5) | min_potassium > c(5.4), min_potassium_ap_ii := 1]
-  data[min_potassium < c(3), min_potassium_ap_ii := 2]
-  data[min_potassium > c(5.9), min_potassium_ap_ii := 3]
-  data[min_potassium < c(2.5)  | min_potassium > c(6.9), min_potassium_ap_ii := 4]
+  data[(min_potassium >= 3.5 & min_potassium < 5.5), min_potassium_ap_ii := 0]
+  data[(min_potassium >= 5.5 & min_potassium < 6) |
+         (min_potassium >= 3 & min_potassium < 3.5), min_potassium_ap_ii := 1]
+  data[(min_potassium >= 2.5 & min_potassium < 3), min_potassium_ap_ii := 2]
+  data[(min_potassium >= 6 & min_potassium < 7), min_potassium_ap_ii := 3]
+  data[(min_potassium >= 7 | min_potassium < 2.5), min_potassium_ap_ii := 4]
 
-  data[max_potassium > c(3.4), max_potassium_ap_ii := 0]
-  data[max_potassium < c(3.5) | max_potassium > c(5.4), max_potassium_ap_ii := 1]
-  data[max_potassium < c(3), max_potassium_ap_ii := 2]
-  data[max_potassium > c(5.9), max_potassium_ap_ii := 3]
-  data[max_potassium < c(2.5)  | max_potassium > c(6.9), max_potassium_ap_ii := 4]
+  data[(max_potassium >= 3.5 & max_potassium < 5.5), max_potassium_ap_ii := 0]
+  data[(max_potassium >= 5.5 & max_potassium < 6) |
+         (max_potassium >= 3 & max_potassium < 3.5), max_potassium_ap_ii := 1]
+  data[(max_potassium >= 2.5 & max_potassium < 3), max_potassium_ap_ii := 2]
+  data[(max_potassium >= 6 & max_potassium < 7), max_potassium_ap_ii := 3]
+  data[(max_potassium >= 7 | max_potassium < 2.5), max_potassium_ap_ii := 4]
 
   #### GCS
   data[, gcs_ap_ii := 15- min_gcs]
@@ -567,14 +581,12 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
   }
 
   #### creatinine
-  data[, min_creat_ap_ii := 0]
   data[min_creatinine >= 3.5, min_creat_ap_ii := 4]
   data[min_creatinine >= 2 & min_creatinine < 3.5, min_creat_ap_ii := 3]
   data[min_creatinine >= 1.5 & min_creatinine < 2, min_creat_ap_ii := 2]
   data[min_creatinine < 0.6, min_creat_ap_ii := 2]
   data[min_creatinine >= 0.6 & min_creatinine < 1.5, min_creat_ap_ii := 0]
 
-  data[, max_creat_ap_ii := 0]
   data[max_creatinine >= 3.5, max_creat_ap_ii := 4]
   data[max_creatinine >= 2 & max_creatinine < 3.5, max_creat_ap_ii := 3]
   data[max_creatinine >= 1.5 & max_creatinine < 2, max_creat_ap_ii := 2]
@@ -588,10 +600,10 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
 
   #### Age
   data[age < 45, age_ap_ii := 0]
-  data[age %between% c(45, 54), age_ap_ii := 2]
-  data[age %between% c(55, 64), age_ap_ii := 3]
-  data[age %between% c(65, 74), age_ap_ii := 5]
-  data[age > 74, age_ap_ii := 6]
+  data[age >= 45 & age < 55, age_ap_ii := 2]
+  data[age >= 55 & age < 65, age_ap_ii := 3]
+  data[age >= 65 & age < 75, age_ap_ii := 5]
+  data[age >= 75, age_ap_ii := 6]
 
   #### Assuming there are no comorbidities
   data <- comorbidities(data)

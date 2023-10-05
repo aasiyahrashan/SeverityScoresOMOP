@@ -26,7 +26,11 @@
     ### Standardise units of measure and calculate the APACHE II score.
     data <- fix_apache_ii_units(data)
     data <- fix_implausible_values_apache_ii(data)
-    data <- calculate_apache_ii_score(data)
+    ### Can choose complete case calculation or normal imputation. Default is normal imputation.
+    data <- calculate_apache_ii_score(data, imputation = "none")
+    print(data$apache_ii_score_no_imputation)
+    data <- calculate_apache_ii_score(data, imputation = "normal")
+    print(data$apache_ii_score)
 ````
 
 #### TODO
