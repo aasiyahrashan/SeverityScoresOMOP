@@ -24,7 +24,7 @@ postgres_connect <- function(host, dbname, port, user, password){
 #' @param end_date As above, but for last date
 #' @param min_day The number of days since ICU admission to get physiology data for. Starts with 0
 #' @param max_day The number of days since ICU admision to get physiology data for.
-#' @param dataset_name Describes which concept codes to select. Has to match *_concepts.csv file name.
+#' @param mapping_path Path to *_concepts.csv file containing score to OMOP mappings. Should match the example_concepts.csv file format.
 #' @param severity_score The name of the severity score to calculate. Only APACHE II at the moment.
 #'
 #' @import lubridate
@@ -34,11 +34,10 @@ postgres_connect <- function(host, dbname, port, user, password){
 #' @import readr
 #' @export
 get_score_variables <- function(postgres_conn, schema, start_date, end_date,
-                                min_day, max_day, dataset_name, severity_score){
+                                min_day, max_day, concepts_file_path, severity_score){
 
   #### Getting the list of concept IDs required for the score, and creating SQL lines from them.
-  concepts <- read_csv(system.file(glue("{dataset_name}_concepts.csv"),
-                          package = "SeverityScoresOMOP")) %>%
+  concepts <- read_csv(file = concepts_file_path) %>%
     filter(score == severity_score)
 
   ##### Getting concepts stored in the measurement table.
