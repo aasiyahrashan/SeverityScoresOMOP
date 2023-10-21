@@ -424,13 +424,13 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
   data[(min_temp < 30 | min_temp >= 41), min_temp_ap_ii := 4]
   data[(min_temp >= 30 & min_temp < 32) | (min_temp >= 39 & min_temp < 41), min_temp_ap_ii := 3]
   data[(min_temp >= 32 & min_temp < 34), min_temp_ap_ii := 2]
-  data[(min_temp >= 34 & min_temp < 36) | (min_temp >= 38.5 & min_temp < 38.9), min_temp_ap_ii := 1]
+  data[(min_temp >= 34 & min_temp < 36) | (min_temp >= 38.5 & min_temp < 39), min_temp_ap_ii := 1]
   data[(min_temp >= 36 & min_temp < 38.5), min_temp_ap_ii := 0]
 
   data[(max_temp < 30 | max_temp >= 41), max_temp_ap_ii := 4]
   data[(max_temp >= 30 & max_temp < 32) | (max_temp >= 39 & max_temp < 41), max_temp_ap_ii := 3]
   data[(max_temp >= 32 & max_temp < 34), max_temp_ap_ii := 2]
-  data[(max_temp >= 34 & max_temp < 36) | (max_temp >= 38.5 & max_temp < 38.9), max_temp_ap_ii := 1]
+  data[(max_temp >= 34 & max_temp < 36) | (max_temp >= 38.5 & max_temp < 39), max_temp_ap_ii := 1]
   data[(max_temp >= 36 & max_temp < 38.5), max_temp_ap_ii := 0]
 
   ##### White blood cell count
