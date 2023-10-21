@@ -625,8 +625,10 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
          pmax(min_hematocrit_ap_ii, max_hematocrit_ap_ii, na.rm = TRUE) +
          pmax(min_hr_ap_ii, max_hr_ap_ii, na.rm = TRUE) +
          pmax(min_rr_ap_ii, max_rr_ap_ii, na.rm = TRUE) +
-         pmax(min_ph_ap_ii, max_ph_ap_ii, na.rm = TRUE) +
-         pmax(min_bicarbonate_ap_ii, max_bicarbonate_ap_ii, na.rm = TRUE) +
+         #### The calculation uses either pH or bicarbonate, not both.
+         #### Above, bicarbonate is only calculated if pH is missing.
+         pmax(min_ph_ap_ii, max_ph_ap_ii,
+              min_bicarbonate_ap_ii, max_bicarbonate_ap_ii, na.rm = TRUE) +
          pmax(min_sodium_ap_ii, max_sodium_ap_ii, na.rm = TRUE) +
          pmax(min_potassium_ap_ii, max_potassium_ap_ii, na.rm = TRUE) + gcs_ap_ii +
          pmax(min_creat_ap_ii, max_creat_ap_ii, na.rm = TRUE) + age_ap_ii + chronic_ap_ii
