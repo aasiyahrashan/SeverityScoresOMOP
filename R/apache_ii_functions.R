@@ -617,14 +617,19 @@ calculate_apache_ii_score <- function(data, imputation = "normal"){
   data[comorbidity > 0 & emergency_admission == 1, chronic_ap_ii := 5]
 
   ### Getting the worst score for each component and adding to get total APACHE II score.
+  ### If either max or min is missing, just using the other.
   data[, (total_variable) :=
-         pmax(min_temp_ap_ii, max_temp_ap_ii) + pmax(min_wcc_ap_ii, max_wcc_ap_ii) +
-         pmax(min_map_ap_ii, max_map_ap_ii) + aado2_ap_ii +
-         pmax(min_hematocrit_ap_ii, max_hematocrit_ap_ii) + pmax(min_hr_ap_ii, max_hr_ap_ii) +
-         pmax(min_rr_ap_ii, max_rr_ap_ii) + pmax(min_ph_ap_ii, max_ph_ap_ii) +
-         pmax(min_bicarbonate_ap_ii, max_bicarbonate_ap_ii) + pmax(min_sodium_ap_ii, max_sodium_ap_ii) +
-         pmax(min_potassium_ap_ii, max_potassium_ap_ii) + gcs_ap_ii +
-         pmax(min_creat_ap_ii, max_creat_ap_ii) + age_ap_ii + chronic_ap_ii
+         pmax(min_temp_ap_ii, max_temp_ap_ii, na.rm = TRUE) +
+         pmax(min_wcc_ap_ii, max_wcc_ap_ii, na.rm = TRUE) +
+         pmax(min_map_ap_ii, max_map_ap_ii, na.rm = TRUE) + aado2_ap_ii +
+         pmax(min_hematocrit_ap_ii, max_hematocrit_ap_ii, na.rm = TRUE) +
+         pmax(min_hr_ap_ii, max_hr_ap_ii, na.rm = TRUE) +
+         pmax(min_rr_ap_ii, max_rr_ap_ii, na.rm = TRUE) +
+         pmax(min_ph_ap_ii, max_ph_ap_ii, na.rm = TRUE) +
+         pmax(min_bicarbonate_ap_ii, max_bicarbonate_ap_ii, na.rm = TRUE) +
+         pmax(min_sodium_ap_ii, max_sodium_ap_ii, na.rm = TRUE) +
+         pmax(min_potassium_ap_ii, max_potassium_ap_ii, na.rm = TRUE) + gcs_ap_ii +
+         pmax(min_creat_ap_ii, max_creat_ap_ii, na.rm = TRUE) + age_ap_ii + chronic_ap_ii
        ]
 
   ### Deleting the intermediate variables so the dataset is not too long.
