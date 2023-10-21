@@ -22,6 +22,7 @@ with icu_admission_details as (
 	-- this should contain ICU stay information, if it exists at all
 	left join {schema}.visit_detail vd
 	on p.person_id = vd.person_id
+	and (vo.visit_occurrence_id = vd.visit_occurrence_id or vd.visit_occurrence_id is null)
 	-- gender concept
 	inner join {schema}.concept c_gender
 	on p.gender_concept_id = c_gender.concept_id
