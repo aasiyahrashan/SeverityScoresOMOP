@@ -33,6 +33,7 @@ omop_connect <- function(driver, host, dbname, port, user, password){
 #' Queries a database to get variables required for a specified severity score. Assumes visit detail
 #' table contains ICU admission information. If not available, uses visit_occurrence.
 #' @param conn A connection object to a database
+#' @param driver odbc driver eg. "SQL Server", "PostgreSQL Driver", etc.
 #' @param schema The name of the schema you want to query.
 #' @param start_date The earliest ICU admission date/datetime. Needs to be in character format.
 #' @param end_date As above, but for last date
@@ -47,9 +48,8 @@ omop_connect <- function(driver, host, dbname, port, user, password){
 #' @import glue
 #' @import readr
 #' @export
-get_score_variables <- function(conn, schema, start_date, end_date,
+get_score_variables <- function(conn, driver, schema, start_date, end_date,
                                 min_day, max_day, dataset_name, severity_score){
-
   #### Getting the list of concept IDs required for the score, and creating SQL lines from them.
   concepts <- read_csv(system.file(glue("{dataset_name}_concepts.csv"),
                                    package = "SeverityScoresOMOP")) %>%
@@ -76,7 +76,13 @@ get_score_variables <- function(conn, schema, start_date, end_date,
                              glue_collapse(measurement_concepts$unit_query, sep = "\n"))
 
   #### Importing the rest of the query from the text file.
-  raw_sql <- readr::read_file(system.file("physiology_variables.sql",
+  #### Using T-SQL if SQL Server
+  if(grep("SQL Server", driver, ignore.case = TRUE)){
+    file_name_physiology_variables <- "physiology_variables_sql_server.sql"
+    }else{
+    file_name_physiology_variables <- "physiology_variables.sql"
+    }
+  raw_sql <- readr::read_file(system.file(file_name_physiology_variables,
                                           package = "SeverityScoresOMOP")) %>%
     glue(schema = schema,
          start_date = start_date,
@@ -84,6 +90,7 @@ get_score_variables <- function(conn, schema, start_date, end_date,
          min_day = min_day,
          max_day = max_day,
          variables_required = variables_required)
+
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
 
@@ -143,7 +150,6 @@ get_score_variables <- function(conn, schema, start_date, end_date,
            start_date = start_date,
            end_date = end_date,
            observation_variables_required = observation_variables_required)
-
     #### Running the query
     observation_data <- dbGetQuery(conn, raw_sql)
 
