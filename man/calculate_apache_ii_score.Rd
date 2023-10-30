@@ -4,13 +4,14 @@
 \alias{calculate_apache_ii_score}
 \title{Calculates the APACHE II score.
 Assumes the units of measure have been fixed using the fix_apache_ii_units function.
-Missing data is handled using normal imputation}
+Missing data is handled using normal imputation by default. If 'none', there is no imputation.}
 \usage{
-calculate_apache_ii_score(data)
+calculate_apache_ii_score(data, imputation = "normal")
 }
 \arguments{
-\item{data}{Dataframe containing physiology variables and units of measure.
-Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"}
+\item{data}{Dataframe containing physiology variables and units of measure.}
+
+\item{imputation}{Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"}
 }
 \value{
 A data frame with a variable containing the apache II score calculated.
@@ -18,5 +19,5 @@ A data frame with a variable containing the apache II score calculated.
 \description{
 Calculates the APACHE II score.
 Assumes the units of measure have been fixed using the fix_apache_ii_units function.
-Missing data is handled using normal imputation
+Missing data is handled using normal imputation by default. If 'none', there is no imputation.
 }

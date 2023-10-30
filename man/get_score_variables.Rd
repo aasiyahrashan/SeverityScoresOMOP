@@ -12,7 +12,7 @@ get_score_variables(
   end_date,
   min_day,
   max_day,
-  dataset_name,
+  concepts_file_path,
   severity_score
 )
 }
@@ -29,9 +29,9 @@ get_score_variables(
 
 \item{max_day}{The number of days since ICU admision to get physiology data for.}
 
-\item{dataset_name}{Describes which concept codes to select. Has to match *_concepts.csv file name.}
-
 \item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
+
+\item{mapping_path}{Path to *_concepts.csv file containing score to OMOP mappings. Should match the example_concepts.csv file format.}
 }
 \description{
 Queries the postgres database to get variables required for the severity score specified.
