@@ -1,4 +1,5 @@
-﻿score,short_name,table,,omop_variable,concept_id_value,name_of_value,Note
+﻿sep=,
+score,short_name,table,,omop_variable,concept_id,name_of_value,Note
 APACHE II,hr,Measurement,,value_as_number,,,
 APACHE II,rr,Measurement,,value_as_number,,,
 APACHE II,temp,Measurement,,value_as_number,,,

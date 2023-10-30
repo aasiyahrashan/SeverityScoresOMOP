@@ -1,5 +1,5 @@
 .Rproj.user/
 secrets.r
 .Rhistory
-inst/ccaa_concepts.csv
-inst/cchic_concepts.csv
+inst/*_concepts.csv
+!inst/example_concepts.csv!
