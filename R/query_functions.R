@@ -1,24 +1,42 @@
 #' Create a connection object to uds.
-#' @param host postgres host
-#' @param user postgres username
-#' @param password postgres password
+#' @param driver odbc driver eg. "SQL Server", "PostgreSQL Driver", etc.
+#' @param host host/server name
+#' @param dbname name of database in server
+#' @param port database port
+#' @param user username
+#' @param password password
 #'
 #' @importFrom DBI dbConnect
 #' @importFrom RPostgres Postgres
+#' @importFrom odbc odbc
 #' @export
-postgres_connect <- function(host, dbname, port, user, password){
-  DBI::dbConnect(
-    RPostgres::Postgres(),
-    host = host,
-    dbname = dbname,
-    port = port,
-    user = user ,
-    password = password)
-}
+omop_connect <-
+  function(driver, host, dbname, port, user, password) {
+    if (driver == "PostgreSQL") {
+      DBI::dbConnect(
+        RPostgres::Postgres(),
+        host = host,
+        dbname = dbname,
+        port = port,
+        user = user ,
+        password = password
+      )
+    } else {
+      DBI::dbConnect(
+        odbc::odbc(),
+        driver = driver,
+        server = host,
+        database = dbname,
+        uid = user,
+        pwd = password
+      )
+    }
+  }
 
-#' Queries the postgres database to get variables required for the severity score specified.
-#' Assumes visit detail table contains ICU admission information. If not available, uses visit_occurrence.
-#' @param postgres_conn A connection object to the postgres database
+#' Queries a database to get variables required for a specified severity score. Assumes visit detail
+#' table contains ICU admission information. If not available, uses visit_occurrence.
+#' @param conn A connection object to a database
+#' @param driver odbc driver eg. "SQL Server", "PostgreSQL Driver", etc.
 #' @param schema The name of the schema you want to query.
 #' @param start_date The earliest ICU admission date/datetime. Needs to be in character format.
 #' @param end_date As above, but for last date
@@ -33,27 +51,26 @@ postgres_connect <- function(host, dbname, port, user, password){
 #' @import glue
 #' @import readr
 #' @export
-get_score_variables <- function(postgres_conn, schema, start_date, end_date,
-                                min_day, max_day, concepts_file_path, severity_score){
-
-  #### Getting the list of concept IDs required for the score, and creating SQL lines from them.
-  concepts <- read_csv(file = concepts_file_path) %>%
-    filter(score == severity_score)
+get_score_variables <- function(conn, driver, schema, start_date, end_date, min_day, max_day, concepts_file_path, severity_score) {
+    #### Getting the list of concept IDs required for the score, and creating SQL lines from them.
+    concepts <- read_csv(file = concepts_file_path) %>%
+      filter(score == severity_score)
 
   ##### Getting concepts stored in the measurement table.
-  measurement_concepts <-
-    concepts %>%
+  measurement_concepts <- concepts %>%
     filter(table == "Measurement") %>%
     #### GCS can sometimes be stored as a concept ID instead of number.
     #### These need a separate query.
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
              omop_variable == "value_as_concept_id")) %>%
-    mutate(max_query = glue(
+    mutate(
+      max_query = glue(
       ", MAX(CASE WHEN m.measurement_concept_id = {concept_id} then m.{omop_variable} END) AS max_{short_name}"),
       min_query = glue(
         ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then m.{omop_variable} END) AS min_{short_name}"),
       unit_query = glue(
-        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then c_unit.concept_name END) AS unit_{short_name}"))
+        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id} then c_unit.concept_name END) AS unit_{short_name}")
+          )
 
   ## Collapsing all the queries into a string.
   variables_required <- glue(glue_collapse(measurement_concepts$max_query, sep = "\n"), "\n",
@@ -61,8 +78,16 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
                       glue_collapse(measurement_concepts$unit_query, sep = "\n"))
 
   #### Importing the rest of the query from the text file.
-  raw_sql <- readr::read_file(system.file("physiology_variables.sql",
-                                          package = "SeverityScoresOMOP")) %>%
+  #### Using T-SQL if SQL Server
+    if (grep("SQL Server", driver, ignore.case = TRUE)) {
+      file_name_physiology_variables <-
+        "physiology_variables_sql_server.sql"
+    } else{
+      file_name_physiology_variables <- "physiology_variables.sql"
+    }
+    raw_sql <-
+      readr::read_file(system.file(file_name_physiology_variables,
+                                   package = "SeverityScoresOMOP")) %>%
     glue(schema = schema,
          start_date = start_date,
          end_date = end_date,
@@ -70,7 +95,7 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
          max_day = max_day,
          variables_required = variables_required)
   #### Running the query
-  data <- dbGetQuery(postgres_conn, raw_sql)
+  data <- dbGetQuery(conn, raw_sql)
 
   ######### Doing GCS separately if stored as concept ID instead of number.
   ######### Otherwise, there's no way of getting the min and max
@@ -89,7 +114,7 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
            min_day = min_day,
            max_day = max_day)
     #### Running the query
-    gcs_data <- dbGetQuery(postgres_conn, raw_sql)
+    gcs_data <- dbGetQuery(conn, raw_sql)
 
     ### Don't like joining here, but not much choice.
     data <- left_join(data, gcs_data,
@@ -130,7 +155,7 @@ get_score_variables <- function(postgres_conn, schema, start_date, end_date,
            observation_variables_required = observation_variables_required)
 
     #### Running the query
-    observation_data <- dbGetQuery(postgres_conn, raw_sql)
+    observation_data <- dbGetQuery(conn, raw_sql)
 
     #### Don't like having to merge here, but doing it for now.
     data <- left_join(data, observation_data,
