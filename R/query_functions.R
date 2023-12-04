@@ -11,20 +11,20 @@ omop_connect <- function(driver, host, dbname, port, user, password) {
   if (driver == "PostgreSQL") {
     DBI::dbConnect(
       RPostgres::Postgres(),
-      host = host,
-      dbname = dbname,
-      port = port,
-      user = user,
+      host     = host,
+      dbname   = dbname,
+      port     = port,
+      user     = user,
       password = password
     )
   } else {
     DBI::dbConnect(
       odbc::odbc(),
-      driver = driver,
-      server = host,
+      driver   = driver,
+      server   = host,
       database = dbname,
-      uid = user,
-      pwd = password
+      uid      = user,
+      pwd      = password
     )
   }
 }
@@ -73,7 +73,7 @@ get_score_variables <- function(conn, driver, schema,
     #### GCS can sometimes be stored as a concept ID instead
     #### of a number. These need a separate query.
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-      omop_variable == "value_as_concept_id")) %>%
+               omop_variable == "value_as_concept_id")) %>%
     mutate(
       max_query = glue(
         ", MAX(CASE WHEN m.measurement_concept_id = {concept_id}
@@ -101,22 +101,16 @@ get_score_variables <- function(conn, driver, schema,
          glue_collapse(measurement_concepts$unit_query, sep = "\n"))
 
   #### Importing the rest of the query from the text file.
-  #### Using a T-SQL script for SQL Server drivers.
-  if (grep("SQL Server", driver, ignore.case = TRUE)) {
-    file_physiology_variables <- "physiology_variables_sql_server.sql"
-  } else {
-    file_physiology_variables <- "physiology_variables.sql"
-  }
-
   raw_sql <- readr::read_file(
-    system.file(file_physiology_variables, package = "SeverityScoresOMOP")) %>%
-    glue(dbname             = dbname,
-         schema             = schema,
-         start_date         = start_date,
-         end_date           = end_date,
-         min_day            = min_day,
-         max_day            = max_day,
-         variables_required = variables_required)
+    system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
+    SqlRender::translate(tolower(driver)) %>%
+    SqlRender::render(dbname             = dbname,
+                      schema             = schema,
+                      start_date         = start_date,
+                      end_date           = end_date,
+                      min_day            = min_day,
+                      max_day            = max_day,
+                      variables_required = variables_required)
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
@@ -125,19 +119,20 @@ get_score_variables <- function(conn, driver, schema,
   ######### Otherwise, there's no way of getting the min and max
   gcs_concepts <- concepts %>%
     filter((short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-      omop_variable == "value_as_concept_id"))
+              omop_variable == "value_as_concept_id"))
 
   if (nrow(gcs_concepts > 0)) {
     ###### The SQL file currently has the GCS LOINC concepts hardcoded.
     ###### I plan to construct it from here when I have time.
     raw_sql <-
       readr::read_file(system.file("gcs_if_stored_as_concept.sql",
-        package = "SeverityScoresOMOP")) %>%
-      glue(schema = schema,
-           start_date = start_date,
-           end_date = end_date,
-           min_day = min_day,
-           max_day = max_day)
+                                   package = "SeverityScoresOMOP")) %>%
+      SqlRender::translate(tolower(driver)) %>%
+      SqlRender::render(schema = schema,
+                        start_date = start_date,
+                        end_date = end_date,
+                        min_day = min_day,
+                        max_day = max_day)
 
     #### Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
@@ -153,8 +148,8 @@ get_score_variables <- function(conn, driver, schema,
     #### Adding combined gcs scores stored as numbers to data.
     data <-
       mutate(data,
-        min_gcs = min_gcs_eye + min_gcs_verbal + min_gcs_motor,
-        max_gcs = max_gcs_eye + max_gcs_verbal + max_gcs_motor)
+             min_gcs = min_gcs_eye + min_gcs_verbal + min_gcs_motor,
+             max_gcs = max_gcs_eye + max_gcs_verbal + max_gcs_motor)
   }
 
   ########## Some concepts may be stored in the observation table.
@@ -162,8 +157,7 @@ get_score_variables <- function(conn, driver, schema,
   ########## TODO - get these into one query so joining can happen in SQL.
   ########## Numeric values in the observation table are currently unsupported
   observation_concepts <- concepts %>%
-    filter(table == "Observation" &
-      omop_variable == "value_as_concept_id")
+    filter(table == "Observation" & omop_variable == "value_as_concept_id")
 
   if (nrow(observation_concepts) > 0) {
     #### Most use several concepts IDs to represent the same score variable.
@@ -176,7 +170,7 @@ get_score_variables <- function(conn, driver, schema,
                                 glue_collapse(concept_id_value, sep = "', '"),
                                 "'")) %>%
       mutate(count_query = glue(
-          ", COUNT (CASE WHEN o.observation_concept_id = {concept_id}
+        ", COUNT (CASE WHEN o.observation_concept_id = {concept_id}
                               AND o.value_as_concept_id IN ({concept_id_value})
                          THEN o.observation_id
                     END) AS count_{short_name}"))
@@ -190,9 +184,10 @@ get_score_variables <- function(conn, driver, schema,
 
     #### Importing the rest of the query from the text file.
     raw_sql <- readr::read_file(system.file("history_variables.sql",
-      package = "SeverityScoresOMOP"
+                                            package = "SeverityScoresOMOP"
     )) %>%
-      glue(
+      SqlRender::translate(tolower(driver)) %>%
+      SqlRender::render(
         schema = schema,
         start_date = start_date,
         end_date = end_date,
