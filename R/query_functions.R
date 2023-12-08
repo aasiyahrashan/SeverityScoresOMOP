@@ -1,5 +1,5 @@
 #' Create a connection object to on OMOP compliant database.
-#' @param driver odbc driver eg. "SQL Server", "PostgreSQL Driver", etc.
+#' @param driver driver eg. "SQL Server", "PostgreSQL", etc.
 #' @param host host/server name
 #' @param dbname name of database in server
 #' @param port database port
@@ -35,7 +35,7 @@ omop_connect <- function(driver, host, dbname, port, user, password) {
 #' available, uses visit_occurrence.
 #'
 #' @param conn A connection object to a database
-#' @param driver odbc driver eg. "SQL Server", "PostgreSQL Driver", etc.
+#' @param dialect dialect A dialect supported by SQLRender
 #' @param schema The name of the schema you want to query.
 #' @param start_date
 #' The earliest ICU admission date/datetime. Needs to be in character format.
@@ -57,7 +57,7 @@ omop_connect <- function(driver, host, dbname, port, user, password) {
 #' @import glue
 #' @import readr
 #' @export
-get_score_variables <- function(conn, driver, schema,
+get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,
                                 min_day, max_day,
                                 concepts_file_path,
@@ -103,7 +103,7 @@ get_score_variables <- function(conn, driver, schema,
   #### Importing the rest of the query from the text file.
   raw_sql <- readr::read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
-    SqlRender::translate(tolower(driver)) %>%
+    SqlRender::translate(tolower(dialect)) %>%
     SqlRender::render(dbname             = dbname,
                       schema             = schema,
                       start_date         = start_date,
@@ -127,7 +127,7 @@ get_score_variables <- function(conn, driver, schema,
     raw_sql <-
       readr::read_file(system.file("gcs_if_stored_as_concept.sql",
                                    package = "SeverityScoresOMOP")) %>%
-      SqlRender::translate(tolower(driver)) %>%
+      SqlRender::translate(tolower(dialect)) %>%
       SqlRender::render(schema = schema,
                         start_date = start_date,
                         end_date = end_date,
@@ -186,7 +186,7 @@ get_score_variables <- function(conn, driver, schema,
     raw_sql <- readr::read_file(system.file("history_variables.sql",
                                             package = "SeverityScoresOMOP"
     )) %>%
-      SqlRender::translate(tolower(driver)) %>%
+      SqlRender::translate(tolower(dialect)) %>%
       SqlRender::render(
         schema = schema,
         start_date = start_date,
