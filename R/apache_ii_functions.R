@@ -435,7 +435,7 @@ fix_implausible_values_apache_ii <- function(data) {
 calculate_apache_ii_score <- function(data, imputation = "normal") {
   data <- as.data.table(data)
   # Define the fields requested for full computation
-  # Left out the blood pressure, gsc, renal failure, admission type and comorbidity variables
+  # Left out the blood pressure, gcs, renal failure, admission type and comorbidity variables
   # since they may be calculated within this function.
   apache <- c(
     "max_temp", "min_temp", "min_wcc", "max_wcc",

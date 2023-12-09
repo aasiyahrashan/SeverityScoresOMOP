@@ -106,8 +106,7 @@ get_score_variables <- function(conn, dialect, schema,
   raw_sql <- readr::read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
     SqlRender::translate(tolower(dialect)) %>%
-    SqlRender::render(dbname             = dbname,
-                      schema             = schema,
+    SqlRender::render(schema             = schema,
                       start_date         = start_date,
                       end_date           = end_date,
                       min_day            = min_day,
