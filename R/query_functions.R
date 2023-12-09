@@ -65,6 +65,10 @@ get_score_variables <- function(conn, dialect, schema,
                                 min_day, max_day,
                                 concepts_file_path,
                                 severity_score) {
+  # Editing the date variables to keep explicit single quote for SQL
+  start_date <- single_quote(start_date)
+  end_date <- single_quote(end_date)
+
   #### Getting the list of concept IDs required for
   #### the score, and creating SQL lines from them.
   concepts <- read_delim(file = concepts_file_path) %>%
