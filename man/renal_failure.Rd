@@ -2,17 +2,21 @@
 % Please edit documentation in R/apache_ii_functions.R
 \name{renal_failure}
 \alias{renal_failure}
-\title{Calculates renal failure variable for APACHE II. Assumes no renal failure if no data.}
+\title{Calculates renal failure variable for APACHE II.
+Assumes no renal failure if no data.}
 \usage{
 renal_failure(data)
 }
 \arguments{
-\item{data}{Dataframe containing physiology variables and units of measure.
-Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"}
+\item{data}{Dataframe containing physiology variables and units of measure. Should be the
+output of the get_score_variables function with the 'severity score parameter
+set to APACHE II"}
 }
 \value{
-A data frame with the physiology values converted to the default units of measure specified.
+A data frame with the physiology values converted
+to the default units of measure specified.
 }
 \description{
-Calculates renal failure variable for APACHE II. Assumes no renal failure if no data.
+Calculates renal failure variable for APACHE II.
+Assumes no renal failure if no data.
 }

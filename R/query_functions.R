@@ -146,12 +146,6 @@ get_score_variables <- function(conn, dialect, schema,
                              "visit_occurrence_id",
                              "visit_detail_id",
                              "days_in_icu"))
-  } else {
-    #### Adding combined gcs scores stored as numbers to data.
-    data <-
-      mutate(data,
-             min_gcs = min_gcs_eye + min_gcs_verbal + min_gcs_motor,
-             max_gcs = max_gcs_eye + max_gcs_verbal + max_gcs_motor)
   }
 
   ########## Some concepts may be stored in the observation table.

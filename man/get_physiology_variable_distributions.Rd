@@ -7,10 +7,11 @@
 get_physiology_variable_distributions(data)
 }
 \arguments{
-\item{data}{Dataframe containing physiology variables. Should have had the units of measure function run as well.}
+\item{data}{Dataframe containing physiology variables.
+The units of measure function should have ran.}
 }
 \value{
-A dataframe listing variable names and % availability per patient day.
+A dataframe listing variable names & availability % per patient day.
 }
 \description{
 Create histogram of distributions of APACHE II physiology variables.

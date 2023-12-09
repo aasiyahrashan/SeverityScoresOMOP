@@ -2,21 +2,21 @@
 % Please edit documentation in R/apache_ii_functions.R
 \name{fix_apache_ii_units}
 \alias{fix_apache_ii_units}
-\title{Convert units of measure into a format suitable for the APACHE II score calculation
-Assumes units of measure are encoded in OMOP using the UCUM source vocabulary
-Throws a warning if the unit of measure is not recognised. Assumes the default unit of measure if not available.}
+\title{Convert units of measure into a format for the APACHE II score calculation}
 \usage{
 fix_apache_ii_units(data)
 }
 \arguments{
-\item{data}{Dataframe containing physiology variables and units of measure.
-Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"}
+\item{data}{Dataframe containing physiology variables and units of measure. Should be the
+output of the get_score_variables function with the severity score parameter
+set to "APACHE II"}
 }
 \value{
-A data frame with the physiology values converted to the default units of measure specified.
+A data frame with physiology values converted to
+the default units of measure specified.
 }
 \description{
-Convert units of measure into a format suitable for the APACHE II score calculation
 Assumes units of measure are encoded in OMOP using the UCUM source vocabulary
-Throws a warning if the unit of measure is not recognised. Assumes the default unit of measure if not available.
+Throws a warning if the unit of measure is not recognised. Assumes the
+default unit of measure if not available.
 }
