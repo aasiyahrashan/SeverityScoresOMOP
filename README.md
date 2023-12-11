@@ -8,22 +8,23 @@
 ````
     library(SeverityScoresOMOP)
     #### Connect to the database.
-    postgres_conn <- postgres_connect(host = "localhost",
-                                  dbname = "dbname",
-                                  port = 5432,
-                                  user = "user",
-                                  password = "password")
+    omop_conn <- omop_connect(driver = "PostgreSQL",
+                              host = "localhost",
+                              dbname = "dbname",
+                              port = 5432,
+                              user = "user",
+                              password = "password")
 
     ### Getting dataset of physiology variables
     ### The min and max date arguments describe how many days after ICU admisison to get data for.
     ### Setting min to 0 and max to 1 gives the first 24 hours of ICU admission.
     ### Each day of data per visit is a separate row in the output dataset. 
-    data <- get_score_variables(postgres_conn, "your_schema_name", 
+    data <- get_score_variables(omop_conn, "your_sql_dialect", "your_schema_name", 
                                 start_date = "2022-07-01", end_date = "2022-07-31",
                                 min_day = 0, max_day = 1, 
                                 concepts_file_path = "path_to_your_concepts_file", 
                                 severity_score = "APACHE II")
-    dbDisconnect(postgres_conn)
+    dbDisconnect(omop_conn)
     
     ### Standardise units of measure and calculate the APACHE II score.
     data <- fix_apache_ii_units(data)

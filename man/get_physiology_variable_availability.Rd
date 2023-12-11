@@ -10,7 +10,7 @@ get_physiology_variable_availability(data)
 \item{data}{Dataframe containing physiology variables and (optionally) APACHE II score.}
 }
 \value{
-A dataframe listing variable names and % availability per patient day.
+A dataframe listing variable names & availability % per patient day.
 }
 \description{
 Get physiology variable availability

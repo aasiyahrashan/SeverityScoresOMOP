@@ -95,6 +95,28 @@ mean_arterial_pressure <- function(data) {
   data
 }
 
+#' Calculates total gcs if not already calculated.
+#'
+#' @param data
+#' Dataframe containing physiology variables and units of measure. Should be the
+#' output of the get_score_variables function with the severity score parameter
+#' set to "APACHE II"
+#'
+#' @import data.table
+#' @return
+#' A data frame with the physiology values converted
+#' to the default units of measure specified.
+total_gcs <- function(data) {
+
+  ## If min exists, the max has to as well.
+  if (!"min_gcs" %in% names(data)) {
+    #### Adding combined gcs scores stored as numbers to data.
+     data[, min_gcs := min_gcs_eye + min_gcs_verbal + min_gcs_motor]
+     data[, max_gcs := max_gcs_eye + max_gcs_verbal + max_gcs_motor]
+  }
+  data
+}
+
 #' Convert units of measure into a format for the APACHE II score calculation
 #'
 #' Assumes units of measure are encoded in OMOP using the UCUM source vocabulary
@@ -413,14 +435,14 @@ fix_implausible_values_apache_ii <- function(data) {
 calculate_apache_ii_score <- function(data, imputation = "normal") {
   data <- as.data.table(data)
   # Define the fields requested for full computation
-  # Left out the blood pressure, renal failure, admission type and comorbidity variables
+  # Left out the blood pressure, gcs, renal failure, admission type and comorbidity variables
   # since they may be calculated within this function.
   apache <- c(
     "max_temp", "min_temp", "min_wcc", "max_wcc",
     "max_fio2", "min_paco2", "min_pao2", "min_hematocrit", "max_hematocrit",
     "min_hr", "max_hr", "min_rr", "max_rr", "min_ph", "max_ph",
     "min_bicarbonate", "max_bicarbonate", "min_sodium", "max_sodium",
-    "min_potassium", "max_potassium", "min_gcs", "min_creatinine",
+    "min_potassium", "max_potassium", "min_creatinine",
     "max_creatinine", "age"
   )
 
@@ -611,6 +633,7 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
   data[(max_potassium >= 7 | max_potassium < 2.5), max_potassium_ap_ii := 4]
 
   #### GCS
+  data <- total_gcs(data)
   data[, gcs_ap_ii := 15 - min_gcs]
   if (imputation == "normal") {
     data[is.na(gcs_ap_ii), gcs_ap_ii := 0]

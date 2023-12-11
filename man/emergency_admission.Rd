@@ -2,17 +2,21 @@
 % Please edit documentation in R/apache_ii_functions.R
 \name{emergency_admission}
 \alias{emergency_admission}
-\title{Calculates emergency admission variable for APACHE II. Assumes elective if there is no data.}
+\title{Calculates emergency admission variable for APACHE II.
+Assumes elective if there is no data.}
 \usage{
 emergency_admission(data)
 }
 \arguments{
 \item{data}{Dataframe containing physiology variables and units of measure.
-Should be the output of the get_score_variables function with the 'severity score parameter set to APACHE II"}
+Should be the output of the get_score_variables function with the
+severity score parameter set to "APACHE II"}
 }
 \value{
-A data frame with the physiology values converted to the default units of measure specified.
+A data frame with the physiology values converted
+to the default units of measure specified.
 }
 \description{
-Calculates emergency admission variable for APACHE II. Assumes elective if there is no data.
+Calculates emergency admission variable for APACHE II.
+Assumes elective if there is no data.
 }

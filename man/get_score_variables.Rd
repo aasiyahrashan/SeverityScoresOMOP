@@ -2,11 +2,13 @@
 % Please edit documentation in R/query_functions.R
 \name{get_score_variables}
 \alias{get_score_variables}
-\title{Queries the postgres database to get variables required for the severity score specified.
-Assumes visit detail table contains ICU admission information. If not available, uses visit_occurrence.}
+\title{Queries a database to get variables required for a specified severity score.
+Assumes visit detail table contains ICU admission information. If not
+available, uses visit_occurrence.}
 \usage{
 get_score_variables(
-  postgres_conn,
+  conn,
+  dialect,
   schema,
   start_date,
   end_date,
@@ -17,7 +19,9 @@ get_score_variables(
 )
 }
 \arguments{
-\item{postgres_conn}{A connection object to the postgres database}
+\item{conn}{A connection object to a database}
+
+\item{dialect}{dialect A dialect supported by SQLRender}
 
 \item{schema}{The name of the schema you want to query.}
 
@@ -25,15 +29,17 @@ get_score_variables(
 
 \item{end_date}{As above, but for last date}
 
-\item{min_day}{The number of days since ICU admission to get physiology data for. Starts with 0}
+\item{min_day}{Days since ICU admission to get physiology data for, starting with 0.}
 
-\item{max_day}{The number of days since ICU admision to get physiology data for.}
+\item{max_day}{Days since ICU admission to get physiology data for.}
 
 \item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
 
-\item{mapping_path}{Path to *_concepts.csv file containing score to OMOP mappings. Should match the example_concepts.csv file format.}
+\item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
+Should match the example_concepts.tsv file format.}
 }
 \description{
-Queries the postgres database to get variables required for the severity score specified.
-Assumes visit detail table contains ICU admission information. If not available, uses visit_occurrence.
+Queries a database to get variables required for a specified severity score.
+Assumes visit detail table contains ICU admission information. If not
+available, uses visit_occurrence.
 }

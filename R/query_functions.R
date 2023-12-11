@@ -65,6 +65,10 @@ get_score_variables <- function(conn, dialect, schema,
                                 min_day, max_day,
                                 concepts_file_path,
                                 severity_score) {
+  # Editing the date variables to keep explicit single quote for SQL
+  start_date <- single_quote(start_date)
+  end_date <- single_quote(end_date)
+
   #### Getting the list of concept IDs required for
   #### the score, and creating SQL lines from them.
   concepts <- read_delim(file = concepts_file_path) %>%
@@ -106,8 +110,7 @@ get_score_variables <- function(conn, dialect, schema,
   raw_sql <- readr::read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
     SqlRender::translate(tolower(dialect)) %>%
-    SqlRender::render(dbname             = dbname,
-                      schema             = schema,
+    SqlRender::render(schema             = schema,
                       start_date         = start_date,
                       end_date           = end_date,
                       min_day            = min_day,
@@ -146,12 +149,6 @@ get_score_variables <- function(conn, dialect, schema,
                              "visit_occurrence_id",
                              "visit_detail_id",
                              "days_in_icu"))
-  } else {
-    #### Adding combined gcs scores stored as numbers to data.
-    data <-
-      mutate(data,
-             min_gcs = min_gcs_eye + min_gcs_verbal + min_gcs_motor,
-             max_gcs = max_gcs_eye + max_gcs_verbal + max_gcs_motor)
   }
 
   ########## Some concepts may be stored in the observation table.
