@@ -2,7 +2,8 @@
 % Please edit documentation in R/data_distributions.R
 \name{get_physiology_variable_availability}
 \alias{get_physiology_variable_availability}
-\title{Get physiology variable availability}
+\title{Get physiology variable availability.
+Returns a dataframe of availability with variables arranged in alphabetical order.}
 \usage{
 get_physiology_variable_availability(data)
 }
@@ -13,7 +14,8 @@ get_physiology_variable_availability(data)
 A dataframe listing variable names & availability % per patient day.
 }
 \description{
-Get physiology variable availability
+Get physiology variable availability.
+Returns a dataframe of availability with variables arranged in alphabetical order.
 }
 \examples{
 availability_dataframe <- get_physiology_variable_availability(data)

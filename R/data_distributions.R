@@ -1,5 +1,5 @@
-#' Get physiology variable availability
-#'
+#' Get physiology variable availability.
+#' Returns a dataframe of availability with variables arranged in alphabetical order.
 #' @param data
 #' Dataframe containing physiology variables and (optionally) APACHE II score.
 #' @return A dataframe listing variable names & availability % per patient day.
@@ -28,7 +28,7 @@ get_physiology_variable_availability <- function(data) {
       names_sep = "_"
     ) %>%
     pivot_wider(names_from = "summary", values_from = "value") %>%
-    arrange(desc(availability))
+    arrange(variable)
 
   availability
 }
