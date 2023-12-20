@@ -165,6 +165,11 @@ get_score_variables <- function(conn, dialect, schema,
 
   condition_concepts <- concepts %>%
     filter(table == "Condition" & short_name != "ap2_diagnosis")
+
+  observation_variables_required  = ""
+  condition_variables_required    = ""
+  visit_detail_variables_required = ""
+
   #### comorbidities from observation table
   # Most use several concepts IDs to represent the same score variable.
   # Eg, CCAA uses 3 codes for renal failure. Collapsing those here.
@@ -242,9 +247,9 @@ get_score_variables <- function(conn, dialect, schema,
   }
 
   #### Importing the rest of the query from the script file.
-  raw_sql <- readr::read_file(system.file("history_variables.sql",
-                                          package = "SeverityScoresOMOP"
-  )) %>%
+  raw_sql <-
+    readr::read_file(system.file("history_variables.sql",
+                                 package = "SeverityScoresOMOP")) %>%
     SqlRender::translate(tolower(dialect)) %>%
     SqlRender::render(
       schema = schema,
@@ -264,16 +269,11 @@ get_score_variables <- function(conn, dialect, schema,
     replace(is.na(.), 0)
 
   #### Don't like having to merge here, but doing it for now.
-  data <-
-    left_join(data,
-              comorbidity_data,
-              by = c(
-                "person_id",
-                "visit_occurrence_id",
-                "visit_detail_id"
-              )
-    )
-
+  data <- left_join(data,
+                    comorbidity_data,
+                    by = c("person_id",
+                           "visit_occurrence_id",
+                           "visit_detail_id"))
 
   as_tibble(data)
 }
