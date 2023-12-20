@@ -32,7 +32,7 @@ LEFT JOIN ( SELECT person_id
                    ,visit_occurrence_id
                    ,visit_detail_id
                    @observation_variables_required
-              FROM observation
+              FROM @schema.observation
            ) o
 
 	ON adm.person_id = o.person_id
