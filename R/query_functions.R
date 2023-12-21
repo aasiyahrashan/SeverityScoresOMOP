@@ -165,7 +165,8 @@ get_score_variables <- function(conn, dialect, schema,
   observation_concepts <- concepts %>%
     filter(table == "Observation" & omop_variable == "value_as_concept_id")
 
-  condition_concepts <- concepts %>% filter(table == "Condition")
+  condition_concepts <- concepts %>%
+    filter(table == "Condition")
 
   # Some use a flag variable in visit_detail to record emergency admissions.
   visit_detail_concepts <- concepts %>%
@@ -173,7 +174,7 @@ get_score_variables <- function(conn, dialect, schema,
 
   # Get all available short_names from {dataset_name}_concepts.csv file.
   required_variables <- concepts %>%
-    filter(table != "Measurement") %>%
+    filter(table %in% c("Observation", "Condition", "Visit Detail")) %>%
     mutate(short_name = glue("count_{short_name}")) %>%
     distinct(short_name) %>%
     pull(.) %>%
