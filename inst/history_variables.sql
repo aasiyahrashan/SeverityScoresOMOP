@@ -57,19 +57,20 @@ AS (SELECT person_id
            ,visit_detail_id
     )
 
-    SELECT *
+    SELECT adm.*
+           @required_variables
       FROM icu_admission_details adm
 -- No date filtering in this query because the concept IDs currently used are history/admission specific.
 -- Need to edit the query if this changes for other datasets.
-INNER JOIN observation_comorbidity o
+LEFT JOIN observation_comorbidity o
         ON adm.person_id           = o.person_id
        AND adm.visit_occurrence_id = o.visit_occurrence_id
        AND adm.visit_detail_id     = o.visit_detail_id
-INNER JOIN condition_comorbidity co
+LEFT JOIN condition_comorbidity co
         ON adm.person_id           = co.person_id
        AND adm.visit_occurrence_id = co.visit_occurrence_id
        AND adm.visit_detail_id     = co.visit_detail_id
-INNER JOIN visit_detail_emergency_admission vd
+LEFT JOIN visit_detail_emergency_admission vd
         ON adm.person_id           = vd.person_id
        AND adm.visit_occurrence_id = vd.visit_occurrence_id
        AND adm.visit_detail_id     = vd.visit_detail_id
