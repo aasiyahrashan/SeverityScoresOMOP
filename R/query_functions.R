@@ -160,17 +160,33 @@ get_score_variables <- function(conn, dialect, schema,
 
   # TODO - get these into one query so joining can happen in SQL.
   # Numeric values in the observation table are currently unsupported
+
+  # Get possible comorbidity concept_ids from {dataset_name}_concepts.csv file.
   observation_concepts <- concepts %>%
     filter(table == "Observation" & omop_variable == "value_as_concept_id")
 
-  condition_concepts <- concepts %>%
-    filter(table == "Condition" & short_name != "ap2_diagnosis")
+  condition_concepts <- concepts %>% filter(table == "Condition")
 
+  # Some use a flag variable in visit_detail to record emergency admissions.
+  visit_detail_concepts <- concepts %>%
+    filter(table == "Visit Detail" & short_name == "emergency_admission")
+
+  # Get all available short_names from {dataset_name}_concepts.csv file.
+  required_variables <-
+    concepts %>%
+    filter(table != "Measurement") %>%
+    mutate(short_name = glue("'{short_name}'")) %>%
+    distinct(short_name) %>%
+    pull(.) %>%
+    toString(.) %>%
+    glue(",", .)
+
+  # Initialize count query strings
   observation_variables_required  = ""
   condition_variables_required    = ""
   visit_detail_variables_required = ""
 
-  #### comorbidities from observation table
+  #### Comorbidities from observation table
   # Most use several concepts IDs to represent the same score variable.
   # Eg, CCAA uses 3 codes for renal failure. Collapsing those here.
   # The query returns the number of rows matching the concept IDs provided.
@@ -206,35 +222,27 @@ get_score_variables <- function(conn, dialect, schema,
   # E.g., CCAA uses 3 codes for renal failure. Collapsing those here.
   # The query returns the number of rows matching the concept IDs provided.
   if (nrow(condition_concepts) > 0) {
-    comorbidity_concepts <-
-      filter(condition_concepts, short_name == "comorbidity")$concept_id %>%
-      glue_collapse(., sep = ", ")
-
-    renal_failure_concepts <-
-      filter(condition_concepts, short_name == "renal_failure")$concept_id %>%
-      glue_collapse(., sep = ", ")
-
-    comorbidity_query <- glue(
-      ", COUNT( CASE
-              WHEN condition_concept_id IN ({comorbidity_concepts})
-              THEN condition_occurrence_id END ) AS count_comorbidity"
-    )
-
-    renal_query <- glue(
-      ",COUNT( CASE
-              WHEN condition_concept_id IN ({renal_failure_concepts})
-              THEN condition_occurrence_id END ) AS count_renal_failure"
-    )
+    condition_concepts <- condition_concepts %>%
+      group_by(short_name) %>%
+      summarise(concept_id =
+                  glue("'",
+                       glue_collapse(concept_id, sep = "', '"),
+                       "'")
+      ) %>%
+      mutate(count_query =
+               glue(",COUNT(CASE",
+                                "WHEN condition_concept_id IN ({concept_id})\n",
+                                "THEN condition_occurrence_id",
+                            "END) AS count_{short_name}")
+      )
 
     ## Collapsing the queries into strings.
     condition_variables_required <-
-      glue("{comorbidity_query}\n{renal_query}")
+      glue(
+        glue_collapse(condition_concepts$count_query, sep = "\n"),
+        "\n"
+      )
   }
-
-  #### Emergency admission from visit_detail
-  visit_detail_concepts <- concepts %>%
-    filter(table == "Visit Detail" &
-             omop_variable == "visit_detail_source_concept_id")
 
   if (nrow(visit_detail_concepts) > 0) {
     emergency_admission_concept <- visit_detail_concepts$concept_id
@@ -255,6 +263,7 @@ get_score_variables <- function(conn, dialect, schema,
       schema = schema,
       start_date = start_date,
       end_date = end_date,
+      variables_required = variables_required
       observation_variables_required = observation_variables_required,
       condition_variables_required = condition_variables_required,
       visit_detail_variables_required = visit_detail_variables_required
@@ -262,11 +271,6 @@ get_score_variables <- function(conn, dialect, schema,
 
   #### Running the query
   comorbidity_data <- dbGetQuery(conn, raw_sql)
-
-  #### removing NULL/NA values
-  comorbidity_data <-
-    comorbidity_data %>%
-    replace(is.na(.), 0)
 
   #### Don't like having to merge here, but doing it for now.
   data <- left_join(data,
