@@ -12,7 +12,9 @@
 #' to the default units of measure specified.
 emergency_admission <- function(data) {
   #### Assuming everyone is a planned admission if no information.
-  data[, emergency_admission := 0]
+  if (!"emergency_admission" %in% names(data)) {
+    data[, emergency_admission := 0]
+  }
 
   ### Using emergency admisison variable if it exists
   if ("count_emergency_admission" %in% names(data)) {
@@ -36,7 +38,9 @@ emergency_admission <- function(data) {
 #' to the default units of measure specified.
 renal_failure <- function(data) {
   #### Assuming no renal failure if there's no record
-  data[, renal_failure := 0]
+  if (!"renal_failure" %in% names(data)) {
+    data[, renal_failure := 0]
+  }
 
   ### Using variable if it exists
   if ("count_renal_failure" %in% names(data)) {
@@ -60,7 +64,9 @@ renal_failure <- function(data) {
 #' to the default units of measure specified.
 comorbidities <- function(data) {
   #### Assuming no comorbidities if there's no data
-  data[, comorbidity := 0]
+  if (!"comorbidity" %in% names(data)) {
+    data[, comorbidity := 0]
+  }
 
   ### Using variable if it exists
   if ("count_comorbidity" %in% names(data)) {
