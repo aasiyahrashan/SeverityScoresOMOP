@@ -208,8 +208,8 @@ fix_apache_ii_units <- function(data) {
 
   #### Default unit for hematocrit is percent.
   #### Going with whether the number is a ratio or percentage.
-  data[max_hematocrit < 1, max_hematocrit := max_hematocrit * 100]
-  data[min_hematocrit < 1, min_hematocrit := min_hematocrit * 100]
+  data[max_hematocrit <= 1, max_hematocrit := max_hematocrit * 100]
+  data[min_hematocrit <= 1, min_hematocrit := min_hematocrit * 100]
 
   if (!all(unique(data$unit_hematocrit) %in% c("liter per liter", "percent", "ratio", NA))) {
     warning("hematocrit contains an unknown unit of measure. Assuming values are liter per liter")
