@@ -98,8 +98,6 @@ AS (SELECT vd.person_id
            ,COALESCE(o.days_in_icu, co.days_in_icu, po.days_in_icu, vd.days_in_icu) AS days_in_icu
            @required_variables
       FROM icu_admission_details adm
--- No date filtering in this query because the concept IDs currently used are history/admission specific.
--- Need to edit the query if this changes for other datasets.
 LEFT JOIN observation_comorbidity o
         ON adm.person_id           = o.person_id
        AND adm.visit_occurrence_id = o.visit_occurrence_id
