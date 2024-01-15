@@ -46,6 +46,17 @@ AS (SELECT person_id
            ,visit_detail_id
     ),
 
+procedure_comorbidity
+AS (SELECT person_id
+           ,visit_occurrence_id
+           ,visit_detail_id
+           @procedure_variables_required
+      FROM @schema.procedure_occurrence
+  GROUP BY person_id
+           ,visit_occurrence_id
+           ,visit_detail_id
+    ),
+
 visit_detail_emergency_admission
 AS (SELECT person_id
            ,visit_occurrence_id
@@ -70,6 +81,10 @@ LEFT JOIN condition_comorbidity co
         ON adm.person_id           = co.person_id
        AND adm.visit_occurrence_id = co.visit_occurrence_id
        AND adm.visit_detail_id     = co.visit_detail_id
+LEFT JOIN procedure_comorbidity po
+        ON adm.person_id           = po.person_id
+       AND adm.visit_occurrence_id = po.visit_occurrence_id
+       AND adm.visit_detail_id     = po.visit_detail_id
 LEFT JOIN visit_detail_emergency_admission vd
         ON adm.person_id           = vd.person_id
        AND adm.visit_occurrence_id = vd.visit_occurrence_id
