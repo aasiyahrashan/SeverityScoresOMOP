@@ -27,60 +27,75 @@ e.g. COUNT (CASE
             END ) AS comorbid_number
 */
 observation_comorbidity
-AS (SELECT person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(observation_datetime, observation_date) AS date_ob
+AS (SELECT o.person_id
+           ,o.visit_occurrence_id
+           ,o.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) AS days_in_icu
            @observation_variables_required
-      FROM @schema.observation
-  GROUP BY person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(observation_datetime, observation_date)
+      FROM icu_admission_details adm
+      LEFT JOIN @schema.observation o
+      ON adm.person_id = o.person_id
+      AND adm.visit_occurrence_id = o.visit_occurrence_id
+      AND adm.visit_detail_id = o.visit_detail_id
+  GROUP BY o.person_id
+           ,o.visit_occurrence_id
+           ,o.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))
     ),
 
 condition_comorbidity
-AS (SELECT person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(condition_start_datetime, condition_start_date) AS date_ob
+AS (SELECT co.person_id
+           ,co.visit_occurrence_id
+           ,co.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) AS days_in_icu
            @condition_variables_required
-      FROM @schema.condition_occurrence
-  GROUP BY person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(condition_start_datetime, condition_start_date)
+      FROM icu_admission_details adm
+      LEFT JOIN @schema.condition_occurrence co
+      ON adm.person_id = co.person_id
+      AND adm.visit_occurrence_id = co.visit_occurrence_id
+      AND adm.visit_detail_id = co.visit_detail_id
+  GROUP BY co.person_id
+           ,co.visit_occurrence_id
+           ,co.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))
     ),
 
 procedure_comorbidity
-AS (SELECT person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(procedure_datetime, procedure_date) AS date_ob
+AS (SELECT po.person_id
+           ,po.visit_occurrence_id
+           ,po.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) AS days_in_icu
            @procedure_variables_required
-      FROM @schema.procedure_occurrence
-  GROUP BY person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(procedure_datetime, procedure_date)
+      FROM icu_admission_details adm
+      LEFT JOIN @schema.procedure_occurrence po
+      ON adm.person_id = po.person_id
+      AND adm.visit_occurrence_id = po.visit_occurrence_id
+      AND adm.visit_detail_id = po.visit_detail_id
+  GROUP BY po.person_id
+           ,po.visit_occurrence_id
+           ,po.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))
     ),
 
 visit_detail_emergency_admission
-AS (SELECT person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(visit_detail_start_datetime, visit_detail_start_date) AS date_ob
+AS (SELECT vd.person_id
+           ,vd.visit_occurrence_id
+           ,vd.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date)) AS days_in_icu
            @visit_detail_variables_required
-      FROM @schema.visit_detail
-  GROUP BY person_id
-           ,visit_occurrence_id
-           ,visit_detail_id
-           ,COALESCE(visit_detail_start_datetime, visit_detail_start_date)
+      FROM icu_admission_details adm
+      LEFT JOIN @schema.visit_detail vd
+      ON adm.person_id = vd.person_id
+      AND adm.visit_occurrence_id = vd.visit_occurrence_id
+      AND adm.visit_detail_id = vd.visit_detail_id
+  GROUP BY vd.person_id
+           ,vd.visit_occurrence_id
+           ,vd.visit_detail_id
+           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date))
     )
 
     SELECT adm.*
-           ,DATEDIFF(dd, adm.icu_admission_datetime
-           ,COALESCE(o.date_ob, co.date_ob, po.date_ob, vd.date_ob)) AS days_in_icu
+           ,COALESCE(o.days_in_icu, co.days_in_icu, po.days_in_icu, vd.days_in_icu) AS days_in_icu
            @required_variables
       FROM icu_admission_details adm
 -- No date filtering in this query because the concept IDs currently used are history/admission specific.
@@ -89,26 +104,26 @@ LEFT JOIN observation_comorbidity o
         ON adm.person_id           = o.person_id
        AND adm.visit_occurrence_id = o.visit_occurrence_id
        AND (adm.visit_detail_id = o.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND DATEDIFF(dd, adm.icu_admission_datetime, o.date_ob) >= '@min_day'
-			 AND DATEDIFF(dd, adm.icu_admission_datetime, o.date_ob) < '@max_day'
+       AND o.days_in_icu >= '@min_day'
+			 AND o.days_in_icu < '@max_day'
 LEFT JOIN condition_comorbidity co
         ON adm.person_id           = co.person_id
        AND adm.visit_occurrence_id = co.visit_occurrence_id
        AND (adm.visit_detail_id = co.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.date_ob               = co.date_ob
-       AND DATEDIFF(dd, adm.icu_admission_datetime, co.date_ob) >= '@min_day'
-			 AND DATEDIFF(dd, adm.icu_admission_datetime, co.date_ob) < '@max_day'
+       AND o.days_in_icu = co.days_in_icu
+       AND co.days_in_icu >= '@min_day'
+			 AND co.days_in_icu < '@max_day'
 LEFT JOIN procedure_comorbidity po
         ON adm.person_id           = po.person_id
        AND adm.visit_occurrence_id = po.visit_occurrence_id
        AND (adm.visit_detail_id = po.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.date_ob               = po.date_ob
-       AND DATEDIFF(dd, adm.icu_admission_datetime, po.date_ob) >= '@min_day'
-			 AND DATEDIFF(dd, adm.icu_admission_datetime, po.date_ob) < '@max_day'
+       AND o.days_in_icu = po.days_in_icu
+       AND po.days_in_icu >= '@min_day'
+			 AND po.days_in_icu < '@max_day'
 LEFT JOIN visit_detail_emergency_admission vd
         ON adm.person_id           = vd.person_id
        AND adm.visit_occurrence_id = vd.visit_occurrence_id
        AND (adm.visit_detail_id = vd.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.date_ob               = vd.date_ob
-       AND DATEDIFF(dd, adm.icu_admission_datetime, vd.date_ob) >= '@min_day'
-			 AND DATEDIFF(dd, adm.icu_admission_datetime, vd.date_ob) < '@max_day'
+       AND o.days_in_icu = vd.days_in_icu
+       AND vd.days_in_icu >= '@min_day'
+			 AND vd.days_in_icu < '@max_day'
