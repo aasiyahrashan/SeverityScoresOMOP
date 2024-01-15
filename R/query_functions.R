@@ -298,6 +298,8 @@ get_score_variables <- function(conn, dialect, schema,
       schema = schema,
       start_date = start_date,
       end_date = end_date,
+      min_day = min_day,
+      max_day = max_day,
       required_variables = required_variables,
       observation_variables_required = observation_variables_required,
       condition_variables_required = condition_variables_required,
@@ -313,7 +315,9 @@ get_score_variables <- function(conn, dialect, schema,
                     comorbidity_data,
                     by = c("person_id",
                            "visit_occurrence_id",
-                           "visit_detail_id"))
+                           "visit_detail_id",
+                           "icu_admission_datetime",
+                           "days_in_icu"))
 
   as_tibble(data)
 }
