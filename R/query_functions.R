@@ -151,58 +151,173 @@ get_score_variables <- function(conn, dialect, schema,
                              "days_in_icu"))
   }
 
-  ########## Some concepts may be stored in the observation table.
-  ########## Using a separate query for these and joining the results after
-  ########## TODO - get these into one query so joining can happen in SQL.
-  ########## Numeric values in the observation table are currently unsupported
+  # Getting comorbidities ---------------------------------------------------
+  # Some of these concepts may be stored in the observation table as a single
+  # variable, some in the condition_occurrence or
+  # procedure_occurrence table as multiple variables.
+  # This difference depends on the ETL paradigm applied.
+  # Queries are created observation table, condition_occurrence table,
+  # procedure_occurrence and, if
+  # applicable, the visit_detail table for emergency admission count.
+
+  # TODO - get these into one query so joining can happen in SQL.
+  # Numeric values in the observation table are currently unsupported
+
+  # Get possible comorbidity concept_ids from {dataset_name}_concepts.csv file.
   observation_concepts <- concepts %>%
     filter(table == "Observation" & omop_variable == "value_as_concept_id")
 
+  condition_concepts <- concepts %>%
+    filter(table == "Condition")
+
+  procedure_concepts <- concepts %>%
+    filter(table == "Procedure")
+
+  # Some use a flag variable in visit_detail to record emergency admissions.
+  visit_detail_concepts <- concepts %>%
+    filter(table == "Visit Detail" & short_name == "emergency_admission")
+
+  # Get all available short_names from {dataset_name}_concepts.csv file.
+  required_variables <- concepts %>%
+    filter(table %in% c("Observation", "Condition",
+                        "Procedure", "Visit Detail")) %>%
+    mutate(short_name = glue("count_{short_name}")) %>%
+    distinct(short_name) %>%
+    pull(.) %>%
+    toString(.) %>%
+    glue(",", .)
+
+  # Initialize count query strings
+  observation_variables_required  = ""
+  condition_variables_required    = ""
+  procedure_variables_required    = ""
+  visit_detail_variables_required = ""
+
+  #### Comorbidities from observation table
+  # Most use several concepts IDs to represent the same score variable.
+  # Eg, CCAA uses 3 codes for renal failure. Collapsing those here.
+  # The query returns the number of rows matching the concept IDs provided.
+
   if (nrow(observation_concepts) > 0) {
-    #### Most use several concepts IDs to represent the same score variable.
-    #### Eg, CCAA uses 3 codes for renal failure. Collapsing those here.
-    #### The query returns the number of rows matching the concept IDs provided.
     observation_concepts <- observation_concepts %>%
       group_by(short_name, concept_id) %>%
       summarise(
-        concept_id_value = glue("'",
-                                glue_collapse(concept_id_value, sep = "', '"),
-                                "'")) %>%
+        concept_id_value = glue(
+          "'",
+          glue_collapse(concept_id_value, sep = "', '"),
+          "'"
+        )
+      ) %>%
       mutate(count_query = glue(
-        ", COUNT (CASE WHEN o.observation_concept_id = {concept_id}
-                              AND o.value_as_concept_id IN ({concept_id_value})
-                         THEN o.observation_id
-                    END) AS count_{short_name}"))
+        ", COUNT ( CASE WHEN observation_concept_id = {concept_id}
+                        AND value_as_concept_id
+                        IN ({concept_id_value})
+                        THEN observation_id
+                    END ) AS count_{short_name}"
+      ))
 
-    ## Collapsing all the queries into a string.
+    ## Collapsing the queries into strings.
     observation_variables_required <-
       glue(
         glue_collapse(observation_concepts$count_query, sep = "\n"),
         "\n"
       )
-
-    #### Importing the rest of the query from the text file.
-    raw_sql <- readr::read_file(system.file("history_variables.sql",
-                                            package = "SeverityScoresOMOP"
-    )) %>%
-      SqlRender::translate(tolower(dialect)) %>%
-      SqlRender::render(
-        schema = schema,
-        start_date = start_date,
-        end_date = end_date,
-        observation_variables_required = observation_variables_required
-      )
-    #### Running the query
-    observation_data <- dbGetQuery(conn, raw_sql)
-
-    #### Don't like having to merge here, but doing it for now.
-    data <-
-      left_join(data,
-                observation_data,
-                by = c("person_id",
-                       "visit_occurrence_id",
-                       "visit_detail_id"))
   }
+
+  #### Comorbidities from condition_occurrence
+  # Most use several concepts IDs to represent the same score variable.
+  # E.g., CCAA uses 3 codes for renal failure. Collapsing those here.
+  # The query returns the number of rows matching the concept IDs provided.
+  if (nrow(condition_concepts) > 0) {
+    condition_concepts <- condition_concepts %>%
+      group_by(short_name) %>%
+      summarise(concept_id =
+                  glue("'",
+                       glue_collapse(concept_id, sep = "', '"),
+                       "'")
+      ) %>%
+      mutate(count_query =
+               glue(",COUNT(CASE
+                                 WHEN condition_concept_id IN ({concept_id})
+                                 THEN condition_occurrence_id
+                            END) AS count_{short_name}")
+      )
+
+    ## Collapsing the queries into strings.
+    condition_variables_required <-
+      glue(
+        glue_collapse(condition_concepts$count_query, sep = "\n"),
+        "\n"
+      )
+  }
+
+  # Comorbidities from procedure_occurrence
+  # Most use several concepts IDs to represent the same score variable.
+  # E.g., CCAA uses 3 codes for renal failure. Collapsing those here.
+  # The query returns the number of rows matching the concept IDs provided.
+  if (nrow(procedure_concepts) > 0) {
+    procedure_concepts <- procedure_concepts %>%
+      group_by(short_name) %>%
+      summarise(concept_id =
+                  glue("'",
+                       glue_collapse(concept_id, sep = "', '"),
+                       "'")
+      ) %>%
+      mutate(count_query =
+               glue(",COUNT(CASE
+                                 WHEN procedure_concept_id IN ({concept_id})
+                                 THEN procedure_concept_id
+                            END) AS count_{short_name}")
+      )
+
+    ## Collapsing the queries into strings.
+    procedure_variables_required <-
+      glue(
+        glue_collapse(procedure_concepts$count_query, sep = "\n"),
+        "\n"
+      )
+  }
+
+  # Emergency admissions from the visit detail table
+  if (nrow(visit_detail_concepts) > 0) {
+    emergency_admission_concept <- visit_detail_concepts$concept_id
+    visit_detail_variables_required <- glue(
+      ",COUNT( CASE
+         WHEN visit_detail_source_concept_id = {emergency_admission_concept}
+         THEN visit_detail_id
+     END ) AS count_emergency_admission "
+    )
+  }
+
+  #### Importing the rest of the query from the script file.
+  raw_sql <-
+    readr::read_file(system.file("history_variables.sql",
+                                 package = "SeverityScoresOMOP")) %>%
+    SqlRender::translate(tolower(dialect)) %>%
+    SqlRender::render(
+      schema = schema,
+      start_date = start_date,
+      end_date = end_date,
+      min_day = min_day,
+      max_day = max_day,
+      required_variables = required_variables,
+      observation_variables_required = observation_variables_required,
+      condition_variables_required = condition_variables_required,
+      procedure_variables_required = procedure_variables_required,
+      visit_detail_variables_required = visit_detail_variables_required
+    )
+
+  #### Running the query
+  comorbidity_data <- dbGetQuery(conn, raw_sql)
+
+  #### Don't like having to merge here, but doing it for now.
+  data <- left_join(data,
+                    comorbidity_data,
+                    by = c("person_id",
+                           "visit_occurrence_id",
+                           "visit_detail_id",
+                           "icu_admission_datetime",
+                           "days_in_icu"))
 
   as_tibble(data)
 }
