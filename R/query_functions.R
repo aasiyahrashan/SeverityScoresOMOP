@@ -165,7 +165,9 @@ get_score_variables <- function(conn, dialect, schema,
 
   # Get possible comorbidity concept_ids from {dataset_name}_concepts.csv file.
   observation_concepts <- concepts %>%
-    filter(table == "Observation" & omop_variable == "value_as_concept_id")
+    filter(table == "Observation" &
+             (omop_variable == "value_as_concept_id" |
+             is.na(omop_variable)))
 
   condition_concepts <- concepts %>%
     filter(table == "Condition")
@@ -200,7 +202,7 @@ get_score_variables <- function(conn, dialect, schema,
 
   if (nrow(observation_concepts) > 0) {
     observation_concepts <- observation_concepts %>%
-      group_by(short_name, concept_id) %>%
+      group_by(short_name, omop_variable, concept_id) %>%
       summarise(
         concept_id_value = glue(
           "'",
@@ -208,12 +210,22 @@ get_score_variables <- function(conn, dialect, schema,
           "'"
         )
       ) %>%
-      mutate(count_query = glue(
+      # Separate queries depending on whether the concept ID variable is filled.
+      mutate(count_query = case_when(
+        omop_variable == "value_as_concept_id" ~
+        glue(
         ", COUNT ( CASE WHEN observation_concept_id = {concept_id}
                         AND value_as_concept_id
                         IN ({concept_id_value})
                         THEN observation_id
                     END ) AS count_{short_name}"
+      ),
+      is.na(omop_variable) ~
+      glue(
+        ", COUNT ( CASE WHEN observation_concept_id = {concept_id}
+                        THEN observation_id
+                    END ) AS count_{short_name}"
+      )
       ))
 
     ## Collapsing the queries into strings.
