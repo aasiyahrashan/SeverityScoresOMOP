@@ -202,8 +202,15 @@ get_score_variables <- function(conn, dialect, schema,
 
   if (nrow(observation_concepts) > 0) {
     observation_concepts <- observation_concepts %>%
-      group_by(short_name, omop_variable, concept_id) %>%
+      group_by(short_name, omop_variable) %>%
       summarise(
+        # This is slightly odd, but just makes sure we don't duplicate concept
+        # IDs in cases where we're selecting specific values
+        concept_id = ifelse(length(unique(concept_id)) == 1,
+                            as.character(unique(concept_id)),
+                            glue("'",
+                                 glue_collapse(unique(concept_id), sep = "', '"),
+                                 "'")),
         concept_id_value = glue(
           "'",
           glue_collapse(concept_id_value, sep = "', '"),
@@ -222,7 +229,7 @@ get_score_variables <- function(conn, dialect, schema,
       ),
       is.na(omop_variable) ~
       glue(
-        ", COUNT ( CASE WHEN observation_concept_id = {concept_id}
+        ", COUNT ( CASE WHEN observation_concept_id IN ({concept_id})
                         THEN observation_id
                     END ) AS count_{short_name}"
       )
