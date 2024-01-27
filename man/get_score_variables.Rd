@@ -15,7 +15,8 @@ get_score_variables(
   min_day,
   max_day,
   concepts_file_path,
-  severity_score
+  severity_score,
+  window_method = "calendar_date"
 )
 }
 \arguments{
@@ -34,6 +35,10 @@ get_score_variables(
 \item{max_day}{Days since ICU admission to get physiology data for.}
 
 \item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
+
+\item{window_method}{This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
+Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
+Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.}
 
 \item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 Should match the example_concepts.tsv file format.}
