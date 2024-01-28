@@ -89,7 +89,6 @@ fix_sofa_units <- function(data) {
 
   # Default unit for platelets is is billion per liter.
   # Which is the same as thousand per cubic millimeter. And thousand per microliter.
-
   # /mm3, /uL
   data[unit_platelet  %in% c("per microliter", "cells per microliter",
                             "per cubic millimeter", "cells per cubic millimeter"),
@@ -133,9 +132,9 @@ fix_sofa_units <- function(data) {
 #' @export
 fix_implausible_values_sofa <- function(data) {
   # platelets
-  data[(max_platelet < 0 | max_wcc > 9999) & unit_platelet == "billion per liter", max_platelet := NA]
+  data[(max_platelet < 0 | max_platelet > 9999) & unit_platelet == "billion per liter", max_platelet := NA]
 
-  data[(min_platelet < 0 | min_wcc > 9999) & unit_platelet == "billion per liter", min_platelet := NA]
+  data[(min_platelet < 0 | min_platelet > 9999) & unit_platelet == "billion per liter", min_platelet := NA]
 
   if (!all(unique(data$unit_platelet) %in% c("billion per liter", NA))) {
     warning("Platelet count values are not in billion per liter. Please fix before attempting to delete implausible values.")
@@ -181,10 +180,6 @@ fix_implausible_values_sofa <- function(data) {
     warning("Creatinine is not in milligram per deciliter. Please fix before attempting to delete implausible values.")
   }
 
-  # Respiratory rate
-  data[max_rr < 2 | max_rr > 79, max_rr := NA]
-  data[min_rr < 2 | min_rr > 79, min_rr := NA]
-
   # Blood pressure. Doing it separately for MAP and for SBP and DBP.
   if (!"min_map" %in% names(data)) {
     # Assuming bp variables will be called sbp and dbp if not map
@@ -206,3 +201,108 @@ fix_implausible_values_sofa <- function(data) {
   data
 }
 
+#' Calculates the SOFA score.
+#' Assumes the units of measure have been fixed using the fix_sofa_units function.
+#' Missing data is handled using normal imputation by default. If 'none', there is no imputation.
+#' @param data Dataframe containing physiology variables and units of measure.
+#' @param imputation
+#' Should be the output of the get_score_variables function with the 'severity score parameter set to SOFA
+#'
+#' @return A data frame with a variable containing the apache II score calculated.
+#' @import data.table
+#' @export
+calculate_sofa_score <- function(data, imputation = "normal") {
+  data <- as.data.table(data)
+
+  # Define the fields requested for full computation
+  # Left out the blood pressure, gcs and mechanical ventilation variables
+  # since they may be calculated within this function.
+  sofa <- c(
+    "min_platelet",
+    "max_fio2", "min_pao2",
+    "max_creatinine", "max_bilirubin"
+  )
+
+  # Display a warning if fields are missing
+  if (all(!sofa %in% names(data))) {
+    warning("Some of the variables required for the SOFA calculation are missing.
+            Please make sure get_score_variables function has been run, and the concepts
+            file includes all variables.")
+  }
+
+  ##### THE ORDER OF CONDITIONS IS IMPORTANT FOR ALL THE BLOCKS BELOW.
+
+  #### Creating new variables which will contain the APACHE sub scores.
+  subscore_variables <- c(
+    "pf_ratio_sofa", "min_platelet_sofa", "max_bilirubin_sofa",
+    "min_map_sofa", "max_creat_sofa", "min_gcs_sofa")
+
+  if (imputation == "normal") {
+    ### Subscores are assigned a score of 0 if there is normal imputation, and no data for variables.
+    data[, (subscore_variables) := as.integer(0)]
+    total_variable <- "sofa_score"
+  } else if (imputation == "none") {
+    ### The score variable is empty if there is no physiology value available.
+    data[, (subscore_variables) := as.integer(NA)]
+    total_variable <- "sofa_score_no_imputation"
+  } else {
+    warning("The imputation type should either be 'normal' or 'none'")
+  }
+
+  # Respiratory. Need to know PF ratio and if patient was on MV
+  data <- mechanical_ventilation(data)
+  # Choosing worst values
+  data[, pf_ratio := min_pao2/max_fio2]
+
+  # PF ratio
+  data[pf_ratio < 100 & mechanical_ventilation == 1, pf_ratio_sofa := 4]
+  data[pf_ratio >= 100 & pf_ratio < 200 & mechanical_ventilation == 1, pf_ratio_sofa := 3]
+  data[pf_ratio >= 200 & pf_ratio < 300, pf_ratio_sofa := 2]
+  data[pf_ratio >= 300 & pf_ratio < 400, pf_ratio_sofa := 1]
+  data[pf_ratio >= 400, pf_ratio_sofa := 0]
+
+
+  # Platelets Using min becasue it always gets a higher score
+  data[min_platelet < 20, min_platelet_sofa := 4]
+  data[min_platelet >= 20 & min_platelet < 50, min_platelet_sofa := 3]
+  data[min_platelet >= 50 & min_platelet < 100, min_platelet_sofa := 2]
+  data[min_platelet >= 100 & min_platelet < 150, min_platelet_sofa := 1]
+  data[min_platelet >= 150, min_platelet_sofa := 0]
+
+  # Bilirubin. Using max becasue it always gets a higher score
+  data[max_bilirubin >= 12, max_bilirubin_sofa := 4]
+  data[max_bilirubin >= 6 & max_bilirubin < 12, max_bilirubin_sofa := 3]
+  data[max_bilirubin >= 2 & max_bilirubin < 6, max_bilirubin_sofa := 2]
+  data[max_bilirubin >= 1.2 & max_bilirubin < 2, max_bilirubin_sofa := 1]
+  data[max_bilirubin <1.2, max_bilirubin_sofa := 0]
+
+  # Mean arterial pressure. Calculating MAP first.
+  data <- mean_arterial_pressure(data)
+
+  # NOTE - Must calculate score based on vasopressors as well.
+  data[(min_map <70), min_map_sofa := 1]
+  data[(min_map >= 70), min_map_sofa := 0]
+
+  # Creatinine. Using max becasue it always gets a higher score
+  data[max_creatinine >= 5, max_creat_sofa := 4]
+  data[max_creatinine >= 3.5 & max_creatinine < 5, max_creat_sofa := 3]
+  data[max_creatinine >= 2 & max_creatinine < 3.5, max_creat_sofa := 2]
+  data[max_creatinine >= 1.2 & max_creatinine < 2, max_creat_sofa := 1]
+  data[max_creatinine <1.2, max_creat_sofa := 0]
+
+  # GCS. Using min because it always get a higher score
+  data[min_gcs < 6, min_gcs_sofa := 4]
+  data[min_gcs >= 6 & min_gcs < 10, min_gcs_sofa := 3]
+  data[min_gcs >= 10 & min_gcs < 13, min_gcs_sofa := 2]
+  data[min_gcs >= 13 & min_gcs < 15, min_gcs_sofa := 1]
+  data[min_gcs == 15, min_gcs_sofa := 0]
+
+  # Total SOFA
+  data[, (total_variable) := pf_ratio_sofa + min_platelet_sofa +
+         max_bilirubin_sofa + min_map_sofa
+       + max_creat_sofa + min_gcs_sofa]
+
+  ### Deleting the intermediate variables so the dataset is not too long.
+  data[, (subscore_variables) := NULL]
+  data
+}

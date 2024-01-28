@@ -51,3 +51,4 @@
 - Same for MAP. Currently getting max and min SBP and DBP. 
 - Write mortality prediction calculation
 - Fix unit conversion and implausible values functions to prevent code being duplicated between scores.
+- Include vasopressors in SOFA calculation.
