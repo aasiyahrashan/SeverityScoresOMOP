@@ -34,7 +34,8 @@ get_score_variables(
 
 \item{max_day}{Days since ICU admission to get physiology data for.}
 
-\item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
+\item{severity_score}{A vector including the names of the severity scores to calculate.
+Currently supports "APACHE II" and "SOFA"}
 
 \item{window_method}{This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
 Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.

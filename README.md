@@ -50,3 +50,4 @@
 - Match pao2, paco2 and fio2s instead of just getting min and max.
 - Same for MAP. Currently getting max and min SBP and DBP. 
 - Write mortality prediction calculation
+- Fix unit conversion and implausible values functions to prevent code being duplicated between scores.
