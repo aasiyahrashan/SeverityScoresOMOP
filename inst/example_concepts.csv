@@ -1,23 +1,22 @@
-﻿sep=,
 ﻿score,short_name,table,concept_id,omop_variable,concept_id_value,name_of_value,Note
 APACHE II,hr,Measurement,,value_as_number,,,
 APACHE II,rr,Measurement,,value_as_number,,,
 APACHE II,temp,Measurement,,value_as_number,,,
 APACHE II,wcc,Measurement,,value_as_number,,,
-APACHE II,sbp,Measurement,,value_as_number,,,Can also be 'map'. There's an extra calculation in the R code if 'sbp' and 'dbp' are used.
-APACHE II,dbp,Measurement,,value_as_number,,,
-APACHE II,fio2,Measurement,,value_as_number,,,
-APACHE II,pao2,Measurement,,value_as_number,,,
+"APACHE II, SOFA",sbp,Measurement,,value_as_number,,,Can also be 'map'. There's an extra calculation in the R code if 'sbp' and 'dbp' are used.
+"APACHE II, SOFA",dbp,Measurement,,value_as_number,,,
+"APACHE II, SOFA",fio2,Measurement,,value_as_number,,,
+"APACHE II, SOFA",pao2,Measurement,,value_as_number,,,
 APACHE II,paco2,Measurement,,value_as_number,,,
 APACHE II,hematocrit,Measurement,,value_as_number,,,
 APACHE II,ph,Measurement,,value_as_number,,,
 APACHE II,sodium,Measurement,,value_as_number,,,
 APACHE II,potassium,Measurement,,value_as_number,,,
 APACHE II,bicarbonate,Measurement,,value_as_number,,,
-APACHE II,creatinine,Measurement,,value_as_number,,,
-APACHE II,gcs_eye,Measurement,,value_as_concept_id,,,"Can also just be 'gcs' stored as a number. If stored as concept IDs like here, make sure the SQL file called 'gcs_if_stored_as_concept.sql' is accurate"
-APACHE II,gcs_motor,Measurement,,value_as_concept_id,,,
-APACHE II,gcs_verbal,Measurement,,value_as_concept_id,,,
+"APACHE II, SOFA",creatinine,Measurement,,value_as_number,,,
+"APACHE II, SOFA",gcs_eye,Measurement,,value_as_concept_id,,,"Can also just be 'gcs' stored as a number. If stored as concept IDs like here, make sure the SQL file called 'gcs_if_stored_as_concept.sql' is accurate"
+"APACHE II, SOFA",gcs_motor,Measurement,,value_as_concept_id,,,
+"APACHE II, SOFA",gcs_verbal,Measurement,,value_as_concept_id,,,
 APACHE II,comorbidity,Observation,,value_as_concept_id,,AIDS,These are all possible options for comorbidites that match the apache conditions
 APACHE II,comorbidity,Observation,,value_as_concept_id,,"Hepatic disease, Moderate to severe",
 APACHE II,comorbidity,Observation,,value_as_concept_id,,"Renal failure, Moderate to severe",
@@ -35,3 +34,6 @@ APACHE II,renal_failure,Observation,,value_as_concept_id,,"Renal failure, Mild",
 APACHE II,renal_failure,Observation,,value_as_concept_id,,"Renal failure, Moderate to severe",
 APACHE II,renal_failure,Observation,,value_as_concept_id,,CKD requiring dialysis,
 APACHE II,emergency_admission,Observation,,value_as_concept_id,,Emergency admission,
+SOFA,mechanical_vent,Observation,4224130,value_as_concept_id,4161461,Vent status,
+SOFA,platelet,Measurement,4267147,value_as_number,,,
+SOFA,bilirubin,Measurement,37398424,value_as_number,,,

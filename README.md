@@ -3,6 +3,7 @@
 - The personal access token is necessary, since this is currently a private repository
 
 #### This package calculates the APACHE II ICU risk prediction score and probability of mortality.
+#### It can also calculate the SOFA score.
 - Works on databases in the OMOP CDM format version 5.4. 
 - Copy the `inst/example_concepts.csv` file. Save it under the name `your_dataset_name_concepts.csv`. The file needs to be filled in with the OMOP concept IDs that match the `short_names`. Don't edit the short names, since they're used in the code.
 ````
@@ -24,7 +25,7 @@
                                 start_date = "2022-07-01", end_date = "2022-07-31",
                                 min_day = 0, max_day = 1, 
                                 concepts_file_path = "path_to_your_concepts_file", 
-                                severity_score = "APACHE II",
+                                severity_score = c("APACHE II", "SOFA"),
                                 window_method = "calendar_date")
     dbDisconnect(omop_conn)
     

@@ -52,7 +52,8 @@ omop_connect <-
 #' Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 #' Should match the example_concepts.tsv file format.
 #' @param severity_score
-#' The name of the severity score to calculate. Only APACHE II at the moment.
+#' A vector including the names of the severity scores to calculate.
+#' Currently supports "APACHE II" and "SOFA"
 #' @param window_method
 #'  This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
 #' Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
@@ -62,6 +63,7 @@ omop_connect <-
 #' @import dplyr
 #' @import glue
 #' @import readr
+#' @import stringr str_detect
 #' @export
 get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,
@@ -100,7 +102,8 @@ get_score_variables <- function(conn, dialect, schema,
 
   # Getting the list of concept IDs required and creating SQL lines from them.
   concepts <- read_delim(file = concepts_file_path) %>%
-    filter(score == severity_score)
+    # Filtering for the scores required.
+    filter(str_detect(score, paste(severity_score, collapse = "|")))
 
   ##### Getting concepts stored in the measurement table.
   measurement_concepts <- concepts %>%
