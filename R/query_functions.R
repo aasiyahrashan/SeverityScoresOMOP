@@ -63,7 +63,7 @@ omop_connect <-
 #' @import dplyr
 #' @import glue
 #' @import readr
-#' @import stringr str_detect
+#' @importFrom stringr str_detect
 #' @export
 get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,

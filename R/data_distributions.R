@@ -6,7 +6,7 @@
 #' @export
 #' @import dplyr
 #' @import tidyr
-#' @import stringr
+#' @importFrom stringr str_replace
 #' @examples
 #' availability_dataframe <- get_physiology_variable_availability(data)
 get_physiology_variable_availability <- function(data) {
