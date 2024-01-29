@@ -20,7 +20,9 @@
     ### The min and max date arguments describe how many days after ICU admisison to get data for.
     ### Setting min to 0 and max to 1 gives the first day of ICU admission.
     ### Each day of data per visit is a separate row in the output dataset. 
-    ### Window method can either be calendar date or 24 hours
+    ### Window method can either be calendar date or 24 hours 
+    ### NOTE - calendar date does not work, because of an issue with sql render. 
+    ### Waiting for a PR to fix it.
     data <- get_score_variables(omop_conn, "your_sql_dialect", "your_schema_name", 
                                 start_date = "2022-07-01", end_date = "2022-07-31",
                                 min_day = 0, max_day = 1, 
@@ -38,6 +40,13 @@
     data <- calculate_apache_ii_score(data, imputation = "normal")
     print(data$apache_ii_score)
     
+    # SOFA score
+    data <- fix_sofa_units(data)
+    data <- fix_implausible_values_sofa(data)
+    data <- calculate_sofa_score(data, imputation = "none")
+    data <- calculate_sofa_score(data)
+    print(data$score_score)
+
     #### Inspect the distribution and availability of variables.
     availability_dataframe <- get_physiology_variable_availability(data)
     View(availability_dataframe)

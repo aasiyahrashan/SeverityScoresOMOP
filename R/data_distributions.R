@@ -12,20 +12,25 @@
 get_physiology_variable_availability <- function(data) {
   availability <-
     data %>%
-    select(starts_with(c("max_", "apache_ii_score"))) %>%
+    select(starts_with(c("max_", "apache_ii_score", "sofa_score"))) %>%
     rename_all(~ stringr::str_replace(., "^max_", "")) %>%
     rename_all(~ stringr::str_replace(., "^apache_ii_score_no_imputation",
                                       "APACHE-II-no-imputation")) %>%
     rename_all(~ stringr::str_replace(., "^apache_ii_score", "APACHE-II")) %>%
+    rename_all(~ stringr::str_replace(., "^sofa_score_no_imputation",
+                                      "SOFA-no-imputation")) %>%
+    rename_all(~ stringr::str_replace(., "^sofa_score", "SOFA")) %>%
     summarise_all(list(
-      availability = ~ round(100 * sum(!is.na(.)) / nrow(data), 2),
+      availability = ~ paste0(
+        sum(!is.na(.)), " (", round(100 * sum(!is.na(.)) /nrow(data), 2), ")"),
       min = ~ if (all(is.na(.))) NA_real_ else round(min(., na.rm = TRUE), 2),
       max = ~ if (all(is.na(.))) NA_real_ else round(max(., na.rm = TRUE), 2)
     )) %>%
     pivot_longer(
       cols = names(.),
       names_to = c("variable", "summary"),
-      names_sep = "_"
+      names_sep = "_",
+      values_transform = as.character
     ) %>%
     pivot_wider(names_from = "summary", values_from = "value") %>%
     arrange(variable)
@@ -77,7 +82,9 @@ get_physiology_variable_distributions <- function(data) {
       name == "min_rr" ~ "Respiratory rate",
       name == "min_sodium" ~ "Sodium mmol/L",
       name == "min_temp" ~ "Temperature C",
-      name == "min_wcc" ~ "White cell count 10^9/L"
+      name == "min_wcc" ~ "White cell count 10^9/L",
+      name == "min_platelet" ~ "Platelet count 10^9/L",
+      name == "min_bilirubin" ~ "Bilirubin mg/dL"
     )) %>%
     ggplot(aes(value)) +
     geom_histogram() +
