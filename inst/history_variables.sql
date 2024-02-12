@@ -33,7 +33,7 @@ AS (SELECT o.person_id
            ,@window_observation AS days_in_icu
            @observation_variables_required
       FROM icu_admission_details adm
-      LEFT JOIN @schema.observation o
+      INNER JOIN @schema.observation o
       ON adm.person_id = o.person_id
       AND adm.visit_occurrence_id = o.visit_occurrence_id
       AND adm.visit_detail_id = o.visit_detail_id
@@ -50,7 +50,7 @@ AS (SELECT co.person_id
            ,@window_condition AS days_in_icu
            @condition_variables_required
       FROM icu_admission_details adm
-      LEFT JOIN @schema.condition_occurrence co
+      INNER JOIN @schema.condition_occurrence co
       ON adm.person_id = co.person_id
       AND adm.visit_occurrence_id = co.visit_occurrence_id
       AND adm.visit_detail_id = co.visit_detail_id
@@ -67,7 +67,7 @@ AS (SELECT po.person_id
            ,@window_procedure AS days_in_icu
            @procedure_variables_required
       FROM icu_admission_details adm
-      LEFT JOIN @schema.procedure_occurrence po
+      INNER JOIN @schema.procedure_occurrence po
       ON adm.person_id = po.person_id
       AND adm.visit_occurrence_id = po.visit_occurrence_id
       AND adm.visit_detail_id = po.visit_detail_id
@@ -85,7 +85,7 @@ AS (SELECT vd.person_id
            ,0 AS days_in_icu
            @visit_detail_variables_required
       FROM icu_admission_details adm
-      LEFT JOIN @schema.visit_detail vd
+      INNER JOIN @schema.visit_detail vd
       ON adm.person_id = vd.person_id
       AND adm.visit_occurrence_id = vd.visit_occurrence_id
       AND adm.visit_detail_id = vd.visit_detail_id
@@ -125,3 +125,4 @@ LEFT JOIN visit_detail_emergency_admission vd
        AND o.days_in_icu = vd.days_in_icu
        AND vd.days_in_icu >= '@min_day'
 			 AND vd.days_in_icu < '@max_day'
+WHERE COALESCE(o.days_in_icu, co.days_in_icu, po.days_in_icu, vd.days_in_icu) IS NOT NULL

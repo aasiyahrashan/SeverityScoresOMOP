@@ -48,7 +48,7 @@ AS (
 					THEN m.value_as_concept_id
 				END) gcs_verbal
 	FROM icu_admission_details adm
-	LEFT JOIN @schema.measurement m
+	INNER JOIN @schema.measurement m
 		-- making sure the visits match up, and filtering by number of days in ICU
 		ON adm.person_id = m.person_id
 			AND adm.visit_occurrence_id = m.visit_occurrence_id
