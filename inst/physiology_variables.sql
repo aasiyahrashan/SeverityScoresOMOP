@@ -6,11 +6,6 @@ AS (
 		--- Some databases don't have month/day of birth. Others don't have birth datetime.
 		--- Imputing DOB as the middle of the year if no further information is available.
 		--- Also, not all databases have datetimes, so we have to impute the date as midnight.
-		,DATEDIFF(yyyy,
-				  COALESCE(p.birth_datetime, DATEFROMPARTS(p.year_of_birth, COALESCE(p.month_of_birth, '06'), COALESCE(p.day_of_birth, '01'))),
-				  COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date)
-				  ) as age
-		,c_gender.concept_name AS gender
 		,vo.visit_occurrence_id
 		,vd.visit_detail_id
 		,COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) AS icu_admission_datetime
@@ -29,7 +24,7 @@ SELECT adm.*
 	-- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
 	@variables_required
 FROM icu_admission_details adm
-LEFT JOIN @schema.measurement m
+INNER JOIN @schema.measurement m
 	-- making sure the visits match up, and filtering by number of days in ICU
 	ON adm.person_id = m.person_id
 	AND adm.visit_occurrence_id = m.visit_occurrence_id
@@ -41,10 +36,7 @@ LEFT JOIN @schema.concept c_unit ON m.unit_concept_id = c_unit.concept_id
 	AND m.unit_concept_id IS NOT NULL
 -- want min or max values for each visit each day.
 GROUP BY adm.person_id
-	,adm.age
-	,adm.gender
 	,adm.visit_occurrence_id
 	,adm.visit_detail_id
 	,adm.icu_admission_datetime
 	,@window_measurement
-

@@ -102,7 +102,17 @@ get_score_variables <- function(conn, dialect, schema,
   concepts <- read_delim(file = concepts_file_path) %>%
     filter(score == severity_score)
 
-  ##### Getting concepts stored in the measurement table.
+  # First getting admission information
+  raw_sql <- readr::read_file(
+    system.file("admission_details.sql", package = "SeverityScoresOMOP")) %>%
+    SqlRender::translate(tolower(dialect)) %>%
+    SqlRender::render(schema             = schema,
+                      start_date         = start_date,
+                      end_date           = end_date)
+
+  adm_details <- dbGetQuery(conn, raw_sql)
+
+  # Getting concepts stored in the measurement table.
   measurement_concepts <- concepts %>%
     filter(table == "Measurement") %>%
     #### GCS can sometimes be stored as a concept ID instead
@@ -134,7 +144,7 @@ get_score_variables <- function(conn, dialect, schema,
          "\n",
          glue_collapse(measurement_concepts$unit_query, sep = "\n"))
 
-  #### Importing the rest of the query from the text file.
+  # Importing the rest of the query from the text file.
   raw_sql <- readr::read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
     SqlRender::translate(tolower(dialect)) %>%
@@ -149,8 +159,8 @@ get_score_variables <- function(conn, dialect, schema,
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
 
-  ######### Doing GCS separately if stored as concept ID instead of number.
-  ######### Otherwise, there's no way of getting the min and max
+  # Doing GCS separately if stored as concept ID instead of number.
+  # Otherwise, there's no way of getting the min and max
   gcs_concepts <- concepts %>%
     filter((short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
               omop_variable == "value_as_concept_id"))
@@ -173,7 +183,7 @@ get_score_variables <- function(conn, dialect, schema,
     gcs_data <- dbGetQuery(conn, raw_sql)
 
     ### Don't like joining here, but not much choice.
-    data <- left_join(data,
+    data <- full_join(data,
                       gcs_data,
                       by = c("person_id",
                              "visit_occurrence_id",
@@ -361,15 +371,22 @@ get_score_variables <- function(conn, dialect, schema,
 
   #### Running the query
   comorbidity_data <- dbGetQuery(conn, raw_sql)
-
+  # data <- comorbidity_data
   #### Don't like having to merge here, but doing it for now.
-  data <- left_join(data,
+  data <- full_join(data,
                     comorbidity_data,
                     by = c("person_id",
                            "visit_occurrence_id",
                            "visit_detail_id",
                            "icu_admission_datetime",
                            "days_in_icu"))
+
+  # Joining to ICU admission details to get all patients
+  data <- left_join(adm_details, data,
+                    by = c("person_id",
+                                 "visit_occurrence_id",
+                                 "visit_detail_id",
+                                 "icu_admission_datetime"))
 
   as_tibble(data)
 }
