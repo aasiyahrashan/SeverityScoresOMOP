@@ -53,7 +53,9 @@ omop_connect <-
 #' Should match the example_concepts.tsv file format.
 #' @param severity_score
 #' The name of the severity score to calculate. Only APACHE II at the moment.
-#'
+#' @param age_method
+#' Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
+#' Default is 'dob'
 #' @import lubridate
 #' @import DBI
 #' @import dplyr
@@ -64,7 +66,8 @@ get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,
                                 min_day, max_day,
                                 concepts_file_path,
-                                severity_score) {
+                                severity_score,
+                                age_method = "dob") {
   # Editing the date variables to keep explicit single quote for SQL
   start_date <- single_quote(start_date)
   end_date <- single_quote(end_date)
@@ -75,10 +78,27 @@ get_score_variables <- function(conn, dialect, schema,
     filter(score == severity_score)
 
   # First getting admission information
+  # Age query
+  if (!(age_method %in% c("dob", "year_only"))) {
+  stop("Error: age_method must be either 'dob' or 'year_only'")
+}
+  age_query <- ifelse(
+    age_method == "dob",
+  " DATEDIFF(yyyy,
+			  COALESCE(p.birth_datetime, DATEFROMPARTS(p.year_of_birth, COALESCE(p.month_of_birth, '06'),
+          COALESCE(p.day_of_birth, '01'))),
+			  COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+        vo.visit_start_datetime, vo.visit_start_date)) as age",
+  " YEAR(COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+                   vo.visit_start_datetime, vo.visit_start_date)) - p.year_of_birth AS age") %>%
+  SqlRender::translate(tolower(dialect))
+
+  # Admission information
   raw_sql <- readr::read_file(
     system.file("admission_details.sql", package = "SeverityScoresOMOP")) %>%
     SqlRender::translate(tolower(dialect)) %>%
     SqlRender::render(schema             = schema,
+                      age_query          = age_query,
                       start_date         = start_date,
                       end_date           = end_date)
 
