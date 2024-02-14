@@ -16,6 +16,7 @@ get_score_variables(
   max_day,
   concepts_file_path,
   severity_score,
+  age_method = "dob",
   window_method = "calendar_date"
 )
 }
@@ -35,6 +36,9 @@ get_score_variables(
 \item{max_day}{Days since ICU admission to get physiology data for.}
 
 \item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
+
+\item{age_method}{Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
+Default is 'dob'}
 
 \item{window_method}{This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
 Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
