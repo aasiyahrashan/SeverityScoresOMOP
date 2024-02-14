@@ -54,6 +54,9 @@ omop_connect <-
 #' @param severity_score
 #' A vector including the names of the severity scores to calculate.
 #' Currently supports "APACHE II" and "SOFA"
+#' @param age_method
+#' Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
+#' Default is 'dob'
 #' @param window_method
 #'  This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
 #' Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
@@ -70,6 +73,7 @@ get_score_variables <- function(conn, dialect, schema,
                                 min_day, max_day,
                                 concepts_file_path,
                                 severity_score,
+                                age_method = "dob",
                                 window_method = "calendar_date") {
   # Editing the date variables to keep explicit single quote for SQL
   start_date <- single_quote(start_date)
@@ -106,10 +110,27 @@ get_score_variables <- function(conn, dialect, schema,
     filter(str_detect(score, paste(severity_score, collapse = "|")))
 
   # First getting admission information
+  # Age query
+  if (!(age_method %in% c("dob", "year_only"))) {
+  stop("Error: age_method must be either 'dob' or 'year_only'")
+}
+  age_query <- ifelse(
+    age_method == "dob",
+  " DATEDIFF(yyyy,
+			  COALESCE(p.birth_datetime, DATEFROMPARTS(p.year_of_birth, COALESCE(p.month_of_birth, '06'),
+          COALESCE(p.day_of_birth, '01'))),
+			  COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+        vo.visit_start_datetime, vo.visit_start_date)) as age",
+  " YEAR(COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+                   vo.visit_start_datetime, vo.visit_start_date)) - p.year_of_birth AS age") %>%
+  SqlRender::translate(tolower(dialect))
+
+  # Admission information
   raw_sql <- readr::read_file(
     system.file("admission_details.sql", package = "SeverityScoresOMOP")) %>%
     SqlRender::translate(tolower(dialect)) %>%
     SqlRender::render(schema             = schema,
+                      age_query          = age_query,
                       start_date         = start_date,
                       end_date           = end_date)
 
