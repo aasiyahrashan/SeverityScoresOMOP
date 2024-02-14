@@ -15,7 +15,8 @@ get_score_variables(
   min_day,
   max_day,
   concepts_file_path,
-  severity_score
+  severity_score,
+  age_method = "dob"
 )
 }
 \arguments{
@@ -34,6 +35,9 @@ get_score_variables(
 \item{max_day}{Days since ICU admission to get physiology data for.}
 
 \item{severity_score}{The name of the severity score to calculate. Only APACHE II at the moment.}
+
+\item{age_method}{Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
+Default is 'dob'}
 
 \item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 Should match the example_concepts.tsv file format.}
