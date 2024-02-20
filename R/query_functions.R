@@ -252,7 +252,7 @@ get_score_variables <- function(conn, dialect, schema,
         omop_variable == "value_as_concept_id" ~
         glue(
         ", COUNT ( CASE WHEN o.observation_concept_id = {concept_id}
-                        AND value_as_concept_id
+                        AND o.value_as_concept_id
                         IN ({concept_id_value})
                         THEN o.observation_id
                     END ) AS count_{short_name}"
