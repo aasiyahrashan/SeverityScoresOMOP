@@ -285,16 +285,16 @@ get_score_variables <- function(conn, dialect, schema,
       mutate(count_query = case_when(
         omop_variable == "value_as_concept_id" ~
         glue(
-        ", COUNT ( CASE WHEN observation_concept_id = {concept_id}
-                        AND value_as_concept_id
+        ", COUNT ( CASE WHEN o.observation_concept_id = {concept_id}
+                        AND o.value_as_concept_id
                         IN ({concept_id_value})
-                        THEN observation_id
+                        THEN o.observation_id
                     END ) AS count_{short_name}"
       ),
       is.na(omop_variable) ~
       glue(
-        ", COUNT ( CASE WHEN observation_concept_id IN ({concept_id})
-                        THEN observation_id
+        ", COUNT ( CASE WHEN o.observation_concept_id IN ({concept_id})
+                        THEN o.observation_id
                     END ) AS count_{short_name}"
       )
       ))
@@ -321,8 +321,8 @@ get_score_variables <- function(conn, dialect, schema,
       ) %>%
       mutate(count_query =
                glue(",COUNT(CASE
-                                 WHEN condition_concept_id IN ({concept_id})
-                                 THEN condition_occurrence_id
+                                 WHEN co.condition_concept_id IN ({concept_id})
+                                 THEN co.condition_occurrence_id
                             END) AS count_{short_name}")
       )
 
@@ -348,8 +348,8 @@ get_score_variables <- function(conn, dialect, schema,
       ) %>%
       mutate(count_query =
                glue(",COUNT(CASE
-                                 WHEN procedure_concept_id IN ({concept_id})
-                                 THEN procedure_concept_id
+                                 WHEN po.procedure_concept_id IN ({concept_id})
+                                 THEN po.procedure_concept_id
                             END) AS count_{short_name}")
       )
 
@@ -366,8 +366,8 @@ get_score_variables <- function(conn, dialect, schema,
     emergency_admission_concept <- visit_detail_concepts$concept_id
     visit_detail_variables_required <- glue(
       ",COUNT( CASE
-         WHEN visit_detail_source_concept_id = {emergency_admission_concept}
-         THEN visit_detail_id
+         WHEN vd.visit_detail_source_concept_id = {emergency_admission_concept}
+         THEN vd.visit_detail_id
      END ) AS count_emergency_admission "
     )
   }
