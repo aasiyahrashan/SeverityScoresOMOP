@@ -5,16 +5,16 @@
 #' @param port database port
 #' @param user username
 #' @param password password
-#'
 #' @importFrom DBI dbConnect
 #' @importFrom RPostgres Postgres
 #' @importFrom odbc odbc
+#' @importFrom SqlRender translate render
 #' @export
 omop_connect <-
   function(driver, host, dbname, port, user, password) {
     if (driver == "PostgreSQL") {
-      DBI::dbConnect(
-        RPostgres::Postgres(),
+      dbConnect(
+        Postgres(),
         host = host,
         dbname = dbname,
         port = port,
@@ -22,8 +22,8 @@ omop_connect <-
         password = password
       )
     } else {
-      DBI::dbConnect(
-        odbc::odbc(),
+      dbConnect(
+        odbc(),
         driver = driver,
         server = host,
         database = dbname,
@@ -67,6 +67,8 @@ omop_connect <-
 #' @import glue
 #' @import readr
 #' @importFrom stringr str_detect
+#' @importFrom SqlRender translate render
+#' @importFrom readr read_file
 #' @export
 get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,
@@ -87,22 +89,22 @@ get_score_variables <- function(conn, dialect, schema,
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
     " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60)") %>%
-    SqlRender::translate(tolower(dialect))
+    translate(tolower(dialect))
   window_observation <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
     " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60)") %>%
-    SqlRender::translate(tolower(dialect))
+    translate(tolower(dialect))
   window_condition <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
     " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60)") %>%
-    SqlRender::translate(tolower(dialect))
+    translate(tolower(dialect))
   window_procedure <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
     " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60)") %>%
-    SqlRender::translate(tolower(dialect))
+    translate(tolower(dialect))
 
   # Getting the list of concept IDs required and creating SQL lines from them.
   concepts <- read_delim(file = concepts_file_path) %>%
@@ -123,16 +125,16 @@ get_score_variables <- function(conn, dialect, schema,
         vo.visit_start_datetime, vo.visit_start_date)) as age",
   " YEAR(COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
                    vo.visit_start_datetime, vo.visit_start_date)) - p.year_of_birth AS age") %>%
-  SqlRender::translate(tolower(dialect))
+  translate(tolower(dialect))
 
   # Admission information
-  raw_sql <- readr::read_file(
+  raw_sql <- read_file(
     system.file("admission_details.sql", package = "SeverityScoresOMOP")) %>%
-    SqlRender::translate(tolower(dialect)) %>%
-    SqlRender::render(schema             = schema,
-                      age_query          = age_query,
-                      start_date         = start_date,
-                      end_date           = end_date)
+    translate(tolower(dialect)) %>%
+    render(schema             = schema,
+           age_query          = age_query,
+           start_date         = start_date,
+           end_date           = end_date)
 
   adm_details <- dbGetQuery(conn, raw_sql)
 
@@ -169,16 +171,16 @@ get_score_variables <- function(conn, dialect, schema,
          glue_collapse(measurement_concepts$unit_query, sep = "\n"))
 
   # Importing the rest of the query from the text file.
-  raw_sql <- readr::read_file(
+  raw_sql <- read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
-    SqlRender::translate(tolower(dialect)) %>%
-    SqlRender::render(schema             = schema,
-                      start_date         = start_date,
-                      end_date           = end_date,
-                      min_day            = min_day,
-                      max_day            = max_day,
-                      window_measurement = window_measurement,
-                      variables_required = variables_required)
+    translate(tolower(dialect)) %>%
+    render(schema             = schema,
+            start_date         = start_date,
+            end_date           = end_date,
+            min_day            = min_day,
+            max_day            = max_day,
+            window_measurement = window_measurement,
+            variables_required = variables_required)
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
@@ -193,15 +195,15 @@ get_score_variables <- function(conn, dialect, schema,
     ###### The SQL file currently has the GCS LOINC concepts hardcoded.
     ###### I plan to construct it from here when I have time.
     raw_sql <-
-      readr::read_file(system.file("gcs_if_stored_as_concept.sql",
+      read_file(system.file("gcs_if_stored_as_concept.sql",
                                    package = "SeverityScoresOMOP")) %>%
-      SqlRender::translate(tolower(dialect)) %>%
-      SqlRender::render(schema = schema,
-                        start_date = start_date,
-                        end_date = end_date,
-                        min_day = min_day,
-                        max_day = max_day,
-                        window_measurement = window_measurement)
+      translate(tolower(dialect)) %>%
+      render(schema = schema,
+              start_date = start_date,
+              end_date = end_date,
+              min_day = min_day,
+              max_day = max_day,
+              window_measurement = window_measurement)
 
     #### Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
@@ -374,10 +376,10 @@ get_score_variables <- function(conn, dialect, schema,
 
   #### Importing the rest of the query from the script file.
   raw_sql <-
-    readr::read_file(system.file("history_variables.sql",
+    read_file(system.file("history_variables.sql",
                                  package = "SeverityScoresOMOP")) %>%
-    SqlRender::translate(tolower(dialect)) %>%
-    SqlRender::render(
+    translate(tolower(dialect)) %>%
+    render(
       schema = schema,
       start_date = start_date,
       end_date = end_date,

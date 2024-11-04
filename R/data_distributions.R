@@ -13,13 +13,13 @@ get_physiology_variable_availability <- function(data) {
   availability <-
     data %>%
     select(starts_with(c("max_", "apache_ii_score", "sofa_score"))) %>%
-    rename_all(~ stringr::str_replace(., "^max_", "")) %>%
-    rename_all(~ stringr::str_replace(., "^apache_ii_score_no_imputation",
+    rename_all(~str_replace(., "^max_", "")) %>%
+    rename_all(~str_replace(., "^apache_ii_score_no_imputation",
                                       "APACHE-II-no-imputation")) %>%
-    rename_all(~ stringr::str_replace(., "^apache_ii_score", "APACHE-II")) %>%
-    rename_all(~ stringr::str_replace(., "^sofa_score_no_imputation",
+    rename_all(~str_replace(., "^apache_ii_score", "APACHE-II")) %>%
+    rename_all(~str_replace(., "^sofa_score_no_imputation",
                                       "SOFA-no-imputation")) %>%
-    rename_all(~ stringr::str_replace(., "^sofa_score", "SOFA")) %>%
+    rename_all(~str_replace(., "^sofa_score", "SOFA")) %>%
     summarise_all(list(
       availability = ~ paste0(
         sum(!is.na(.)), " (", round(100 * sum(!is.na(.)) /nrow(data), 2), ")"),
