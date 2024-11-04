@@ -16,7 +16,8 @@ get_score_variables(
   max_day,
   concepts_file_path,
   severity_score,
-  age_method = "dob"
+  age_method = "dob",
+  window_method = "calendar_date"
 )
 }
 \arguments{
@@ -38,6 +39,10 @@ get_score_variables(
 
 \item{age_method}{Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
 Default is 'dob'}
+
+\item{window_method}{This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
+Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
+Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.}
 
 \item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 Should match the example_concepts.tsv file format.}

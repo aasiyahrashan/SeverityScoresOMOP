@@ -56,6 +56,11 @@ omop_connect <-
 #' @param age_method
 #' Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
 #' Default is 'dob'
+#' @param window_method
+#'  This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
+#' Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
+#' Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.
+
 #' @import lubridate
 #' @import DBI
 #' @import dplyr
@@ -67,13 +72,38 @@ get_score_variables <- function(conn, dialect, schema,
                                 min_day, max_day,
                                 concepts_file_path,
                                 severity_score,
-                                age_method = "dob") {
+                                age_method = "dob",
+                                window_method = "calendar_date") {
   # Editing the date variables to keep explicit single quote for SQL
   start_date <- single_quote(start_date)
   end_date <- single_quote(end_date)
 
-  #### Getting the list of concept IDs required for
-  #### the score, and creating SQL lines from them.
+  # Creating windowing query
+  if (!(window_method %in% c("calendar_date", "24_hrs"))) {
+    stop("Error: window_method must be either 'calendar_date' or '24_hrs'")
+    }
+  window_measurement <- ifelse(
+    window_method == "calendar_date",
+    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
+    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60)") %>%
+    SqlRender::translate(tolower(dialect))
+  window_observation <- ifelse(
+    window_method == "calendar_date",
+    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
+    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60)") %>%
+    SqlRender::translate(tolower(dialect))
+  window_condition <- ifelse(
+    window_method == "calendar_date",
+    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
+    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60)") %>%
+    SqlRender::translate(tolower(dialect))
+  window_procedure <- ifelse(
+    window_method == "calendar_date",
+    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
+    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60)") %>%
+    SqlRender::translate(tolower(dialect))
+
+  # Getting the list of concept IDs required and creating SQL lines from them.
   concepts <- read_delim(file = concepts_file_path) %>%
     filter(score == severity_score)
 
@@ -145,6 +175,7 @@ get_score_variables <- function(conn, dialect, schema,
                       end_date           = end_date,
                       min_day            = min_day,
                       max_day            = max_day,
+                      window_measurement = window_measurement,
                       variables_required = variables_required)
 
   #### Running the query
@@ -167,7 +198,8 @@ get_score_variables <- function(conn, dialect, schema,
                         start_date = start_date,
                         end_date = end_date,
                         min_day = min_day,
-                        max_day = max_day)
+                        max_day = max_day,
+                        window_measurement = window_measurement)
 
     #### Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
@@ -350,6 +382,9 @@ get_score_variables <- function(conn, dialect, schema,
       min_day = min_day,
       max_day = max_day,
       required_variables = required_variables,
+      window_observation = window_observation,
+      window_condition = window_condition,
+      window_procedure = window_procedure,
       observation_variables_required = observation_variables_required,
       condition_variables_required = condition_variables_required,
       procedure_variables_required = procedure_variables_required,

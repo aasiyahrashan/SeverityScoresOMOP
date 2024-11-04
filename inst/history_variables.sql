@@ -30,7 +30,7 @@ observation_comorbidity
 AS (SELECT o.person_id
            ,o.visit_occurrence_id
            ,o.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) AS days_in_icu
+           ,@window_observation AS days_in_icu
            @observation_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.observation o
@@ -40,14 +40,14 @@ AS (SELECT o.person_id
   GROUP BY o.person_id
            ,o.visit_occurrence_id
            ,o.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))
+           ,@window_observation
     ),
 
 condition_comorbidity
 AS (SELECT co.person_id
            ,co.visit_occurrence_id
            ,co.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) AS days_in_icu
+           ,@window_condition AS days_in_icu
            @condition_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.condition_occurrence co
@@ -57,14 +57,14 @@ AS (SELECT co.person_id
   GROUP BY co.person_id
            ,co.visit_occurrence_id
            ,co.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))
+           ,@window_condition
     ),
 
 procedure_comorbidity
 AS (SELECT po.person_id
            ,po.visit_occurrence_id
            ,po.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) AS days_in_icu
+           ,@window_procedure AS days_in_icu
            @procedure_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.procedure_occurrence po
@@ -74,14 +74,15 @@ AS (SELECT po.person_id
   GROUP BY po.person_id
            ,po.visit_occurrence_id
            ,po.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))
+           ,@window_procedure
     ),
 
 visit_detail_emergency_admission
 AS (SELECT vd.person_id
            ,vd.visit_occurrence_id
            ,vd.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date)) AS days_in_icu
+           --- has to be 0 since ICU admission datetime is derived from the same variables.
+           ,0 AS days_in_icu
            @visit_detail_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.visit_detail vd
@@ -91,7 +92,6 @@ AS (SELECT vd.person_id
   GROUP BY vd.person_id
            ,vd.visit_occurrence_id
            ,vd.visit_detail_id
-           ,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date))
     )
 
     SELECT adm.*

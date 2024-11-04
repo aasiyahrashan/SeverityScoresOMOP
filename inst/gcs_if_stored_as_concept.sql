@@ -31,7 +31,7 @@ AS (
 	SELECT adm.person_id
 		,adm.visit_occurrence_id
 		,adm.visit_detail_id
-		,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) AS days_in_icu
+		,@window_measurement AS days_in_icu
 		,COALESCE(m.measurement_datetime, m.measurement_date) AS measurement_datetime
 		--- The max here is just a method of getting the output into wide format.
 		-- There shouldn't be more than one measurement at exactly the same time.
@@ -53,8 +53,8 @@ AS (
 		ON adm.person_id = m.person_id
 			AND adm.visit_occurrence_id = m.visit_occurrence_id
 			AND (adm.visit_detail_id = m.visit_detail_id OR adm.visit_detail_id IS NULL)
-			AND DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) >= '@min_day'
-			AND DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) < '@max_day'
+			AND @window_measurement >= '@min_day'
+			AND @window_measurement < '@max_day'
 	--- Making sure we get gcs values only. The variables become null otherwise.
 	WHERE value_as_concept_id IS NOT NULL
 		AND measurement_concept_id IN ('3016335', '3008223', '3009094')
@@ -63,7 +63,7 @@ AS (
 		,adm.visit_occurrence_id
 		,adm.visit_detail_id
 		,adm.icu_admission_datetime
-		,DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))
+		,@window_measurement
 		,COALESCE(m.measurement_datetime, m.measurement_date)
 
 	),
