@@ -21,9 +21,7 @@
     ### Setting min to 0 and max to 1 gives the first day of ICU admission.
     ### Each day of data per visit is a separate row in the output dataset. 
     ### Age method is used to calculate age. It decides whether to use date of birth, or just year of birth. Options are 'dob' (default) or 'year_only'
-    ### Window method can either be calendar date or 24 hours 
-    ### NOTE - calendar date does not work, because of an issue with sql render. 
-    ### Waiting for a PR to fix it.
+    ### Window method can either be calendar date or 24 hours .
 
     data <- get_score_variables(omop_conn, "your_sql_dialect", "your_schema_name", 
                                 start_date = "2022-07-01", end_date = "2022-07-31",
