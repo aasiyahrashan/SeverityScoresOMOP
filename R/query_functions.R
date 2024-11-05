@@ -89,27 +89,27 @@ get_score_variables <- function(conn, dialect, schema,
   window_measurement <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_observation <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_condition <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_procedure <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_device <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
 
   # Getting the list of concept IDs required and creating SQL lines from them.
