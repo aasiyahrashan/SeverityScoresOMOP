@@ -58,6 +58,7 @@ omop_connect <-
 #' Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
 #' Default is 'dob'
 #' @param window_method
+#'  Either 'calendar_date' or '24_hrs'.
 #'  This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
 #' Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
 #' Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.
@@ -88,22 +89,27 @@ get_score_variables <- function(conn, dialect, schema,
   window_measurement <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_observation <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_condition <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_procedure <- ifelse(
     window_method == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
-    " DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60)") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60))") %>%
+    translate(tolower(dialect))
+  window_device <- ifelse(
+    window_method == "calendar_date",
+    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date))",
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
 
   # Getting the list of concept IDs required and creating SQL lines from them.
@@ -223,8 +229,9 @@ get_score_variables <- function(conn, dialect, schema,
   # procedure_occurrence table as multiple variables.
   # This difference depends on the ETL paradigm applied.
   # Queries are created observation table, condition_occurrence table,
-  # procedure_occurrence and, if
+  # procedure_occurrence, device_exposure and, if
   # applicable, the visit_detail table for emergency admission count.
+  # Note, now adding the device table as a means of getting other variables in
 
   # TODO - get these into one query so joining can happen in SQL.
   # Numeric values in the observation table are currently unsupported
@@ -241,6 +248,9 @@ get_score_variables <- function(conn, dialect, schema,
   procedure_concepts <- concepts %>%
     filter(table == "Procedure")
 
+  device_concepts <- concepts %>%
+    filter(table == "Device")
+
   # Some use a flag variable in visit_detail to record emergency admissions.
   visit_detail_concepts <- concepts %>%
     filter(table == "Visit Detail" & short_name == "emergency_admission")
@@ -248,7 +258,7 @@ get_score_variables <- function(conn, dialect, schema,
   # Get all available short_names from {dataset_name}_concepts.csv file.
   required_variables <- concepts %>%
     filter(table %in% c("Observation", "Condition",
-                        "Procedure", "Visit Detail")) %>%
+                        "Procedure", "Visit Detail", "Device")) %>%
     mutate(short_name = glue("count_{short_name}")) %>%
     distinct(short_name) %>%
     pull(.) %>%
@@ -259,6 +269,7 @@ get_score_variables <- function(conn, dialect, schema,
   observation_variables_required  = ""
   condition_variables_required    = ""
   procedure_variables_required    = ""
+  device_variables_required    = ""
   visit_detail_variables_required = ""
 
   #### Comorbidities from observation table
@@ -363,6 +374,33 @@ get_score_variables <- function(conn, dialect, schema,
       )
   }
 
+  # Comorbidities from device_exposure
+  # Most use several concepts IDs to represent the same score variable.
+  # E.g., CCAA uses 3 codes for renal failure. Collapsing those here.
+  # The query returns the number of rows matching the concept IDs provided.
+  if (nrow(device_concepts) > 0) {
+    device_concepts <- device_concepts %>%
+      group_by(short_name) %>%
+      summarise(concept_id =
+                  glue("'",
+                       glue_collapse(concept_id, sep = "', '"),
+                       "'")
+      ) %>%
+      mutate(count_query =
+               glue(",COUNT(CASE
+                                 WHEN device_concept_id IN ({concept_id})
+                                 THEN de.device_concept_id
+                            END) AS count_{short_name}")
+      )
+
+    ## Collapsing the queries into strings.
+    device_variables_required <-
+      glue(
+        glue_collapse(device_concepts$count_query, sep = "\n"),
+        "\n"
+      )
+  }
+
   # Emergency admissions from the visit detail table
   if (nrow(visit_detail_concepts) > 0) {
     emergency_admission_concept <- visit_detail_concepts$concept_id
@@ -389,9 +427,11 @@ get_score_variables <- function(conn, dialect, schema,
       window_observation = window_observation,
       window_condition = window_condition,
       window_procedure = window_procedure,
+      window_device = window_device,
       observation_variables_required = observation_variables_required,
       condition_variables_required = condition_variables_required,
       procedure_variables_required = procedure_variables_required,
+      device_variables_required = device_variables_required,
       visit_detail_variables_required = visit_detail_variables_required
     )
 
