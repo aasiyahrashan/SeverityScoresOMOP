@@ -1,5 +1,5 @@
 .Rproj.user/
-secrets.r
+secrets.R
 .Rhistory
 inst/*_concepts.csv
 !inst/example_concepts.csv!

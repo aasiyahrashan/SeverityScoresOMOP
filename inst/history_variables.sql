@@ -77,6 +77,23 @@ AS (SELECT po.person_id
            ,@window_procedure
     ),
 
+device_comorbidity
+AS (SELECT de.person_id
+           ,de.visit_occurrence_id
+           ,de.visit_detail_id
+           ,@window_device AS days_in_icu
+           @device_variables_required
+      FROM icu_admission_details adm
+      INNER JOIN @schema.device_exposure de
+      ON adm.person_id = de.person_id
+      AND adm.visit_occurrence_id = de.visit_occurrence_id
+      AND adm.visit_detail_id = de.visit_detail_id
+  GROUP BY de.person_id
+           ,de.visit_occurrence_id
+           ,de.visit_detail_id
+           ,@window_device
+    ),
+
 visit_detail_emergency_admission
 AS (SELECT vd.person_id
            ,vd.visit_occurrence_id
@@ -118,6 +135,13 @@ LEFT JOIN procedure_comorbidity po
        AND o.days_in_icu = po.days_in_icu
        AND po.days_in_icu >= '@min_day'
 			 AND po.days_in_icu < '@max_day'
+LEFT JOIN device_comorbidity de
+        ON adm.person_id           = de.person_id
+       AND adm.visit_occurrence_id = de.visit_occurrence_id
+       AND (adm.visit_detail_id = de.visit_detail_id OR adm.visit_detail_id IS NULL)
+       AND o.days_in_icu = de.days_in_icu
+       AND de.days_in_icu >= '@min_day'
+			 AND de.days_in_icu < '@max_day'
 LEFT JOIN visit_detail_emergency_admission vd
         ON adm.person_id           = vd.person_id
        AND adm.visit_occurrence_id = vd.visit_occurrence_id
@@ -125,4 +149,5 @@ LEFT JOIN visit_detail_emergency_admission vd
        AND o.days_in_icu = vd.days_in_icu
        AND vd.days_in_icu >= '@min_day'
 			 AND vd.days_in_icu < '@max_day'
-WHERE COALESCE(o.days_in_icu, co.days_in_icu, po.days_in_icu, vd.days_in_icu) IS NOT NULL
+WHERE COALESCE(o.days_in_icu, co.days_in_icu, po.days_in_icu, de.days_in_icu,
+                vd.days_in_icu) IS NOT NULL
