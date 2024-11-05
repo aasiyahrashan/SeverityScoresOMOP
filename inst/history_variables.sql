@@ -13,7 +13,7 @@ AS (
 	  -- this should contain ICU stay information, if it exists at all
   LEFT JOIN @schema.visit_detail vd
 		     ON p.person_id = vd.person_id
-			  AND (vo.visit_occurrence_id = vd.visit_occurrence_id OR vd.visit_occurrence_id IS NULL)
+			  AND vo.visit_occurrence_id = vd.visit_occurrence_id
 	  WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) >= @start_date
 		  AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) < @end_date
 	  ),
@@ -36,7 +36,7 @@ AS (SELECT o.person_id
       INNER JOIN @schema.observation o
       ON adm.person_id = o.person_id
       AND adm.visit_occurrence_id = o.visit_occurrence_id
-      AND adm.visit_detail_id = o.visit_detail_id
+      AND (adm.visit_detail_id = o.visit_detail_id OR adm.visit_detail_id IS NULL)
   GROUP BY o.person_id
            ,o.visit_occurrence_id
            ,o.visit_detail_id
@@ -53,7 +53,7 @@ AS (SELECT co.person_id
       INNER JOIN @schema.condition_occurrence co
       ON adm.person_id = co.person_id
       AND adm.visit_occurrence_id = co.visit_occurrence_id
-      AND adm.visit_detail_id = co.visit_detail_id
+      AND (adm.visit_detail_id = co.visit_detail_id OR adm.visit_detail_id IS NULL)
   GROUP BY co.person_id
            ,co.visit_occurrence_id
            ,co.visit_detail_id
@@ -70,7 +70,7 @@ AS (SELECT po.person_id
       INNER JOIN @schema.procedure_occurrence po
       ON adm.person_id = po.person_id
       AND adm.visit_occurrence_id = po.visit_occurrence_id
-      AND adm.visit_detail_id = po.visit_detail_id
+      AND (adm.visit_detail_id = po.visit_detail_id OR adm.visit_detail_id IS NULL)
   GROUP BY po.person_id
            ,po.visit_occurrence_id
            ,po.visit_detail_id
@@ -87,7 +87,7 @@ AS (SELECT de.person_id
       INNER JOIN @schema.device_exposure de
       ON adm.person_id = de.person_id
       AND adm.visit_occurrence_id = de.visit_occurrence_id
-      AND adm.visit_detail_id = de.visit_detail_id
+      AND (adm.visit_detail_id = de.visit_detail_id OR adm.visit_detail_id IS NULL)
   GROUP BY de.person_id
            ,de.visit_occurrence_id
            ,de.visit_detail_id
@@ -105,7 +105,7 @@ AS (SELECT vd.person_id
       INNER JOIN @schema.visit_detail vd
       ON adm.person_id = vd.person_id
       AND adm.visit_occurrence_id = vd.visit_occurrence_id
-      AND adm.visit_detail_id = vd.visit_detail_id
+      AND (adm.visit_detail_id = vd.visit_detail_id OR adm.visit_detail_id IS NULL)
   GROUP BY vd.person_id
            ,vd.visit_occurrence_id
            ,vd.visit_detail_id
