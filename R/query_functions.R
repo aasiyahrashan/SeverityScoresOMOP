@@ -321,7 +321,7 @@ get_score_variables <- function(conn, dialect, schema,
     filter(table == "Visit Detail" & short_name == "emergency_admission")
 
   # Get all available short_names from {dataset_name}_concepts.csv file.
-  required_variables <- concepts %>%
+  all_required_variables <- concepts %>%
     filter(table %in% c("Measurement", "Observation", "Condition",
                         "Procedure", "Visit Detail", "Device")) %>%
     mutate(short_name = glue("count_{short_name}")) %>%
