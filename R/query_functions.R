@@ -48,9 +48,9 @@ window_query <- function(window_start_point, time_variable, date_variable, caden
 
 #' Internal function called in `get_score_variables`.
 #' Builds the 'variable required' query for each table
-variables_required_query <- function(concepts, table_name,
+variables_query <- function(concepts, table_name,
                                      concept_id_var_name,
-                                     value_as_concept_id_var = ""
+                                     value_as_concept_id_var = "",
                                      table_id_var = ""){
 
   variables_required = ""
@@ -204,7 +204,7 @@ get_score_variables <- function(conn, dialect, schema,
   start_date <- single_quote(start_date)
   end_date <- single_quote(end_date)
 
-  # Creating windowing query
+  # Checking arguments
   if (!(window_start_point %in% c("calendar_date", "icu_admission_time"))) {
     stop("Error: window_start_point must be either 'calendar_date' or 'icu_admission_time'")
   }
@@ -217,11 +217,6 @@ get_score_variables <- function(conn, dialect, schema,
   if(!cadence > 0){
     stop("cadence must be a number > 0'")
   }
-
-  # Getting the list of concept IDs required and creating SQL lines from them.
-  concepts <- read_delim(file = concepts_file_path) %>%
-    # Filtering for the scores required.
-    filter(str_detect(score, paste(severity_score, collapse = "|")))
 
   # First getting admission information
   # Age query
@@ -250,77 +245,12 @@ get_score_variables <- function(conn, dialect, schema,
 
   adm_details <- dbGetQuery(conn, raw_sql)
 
-  # Importing the rest of the query from the text file.
-  raw_sql <- read_file(
-    system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
-    translate(tolower(dialect)) %>%
-    render(schema              = schema,
-            start_date         = start_date,
-            end_date           = end_date,
-            first_window       = first_window,
-            last_window        = last_window,
-            window_measurement = window_query(window_start_point,
-                                              "m.measurement_datetime",
-                                              "m.measurement_date", cadence,
-                                              dialect),
-            variables_required = variables_required_query(concepts,
-                                                          "Measurement",
-                                                          "m.measurement_concept_id"))
+  # Getting the list of concept IDs required and creating SQL queries from them.
+  concepts <- read_delim(file = concepts_file_path) %>%
+    # Filtering for the scores required.
+    filter(str_detect(score, paste(severity_score, collapse = "|")))
 
-  #### Running the query
-  data <- dbGetQuery(conn, raw_sql)
-
-  # Doing GCS separately if stored as concept ID instead of number.
-  # Otherwise, there's no way of getting the min and max
-  gcs_concepts <- concepts %>%
-    filter((short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-              omop_variable == "value_as_concept_id"))
-
-  if (nrow(gcs_concepts > 0)) {
-    ###### The SQL file currently has the GCS LOINC concepts hardcoded.
-    ###### I plan to construct it from here when I have time.
-    raw_sql <-
-      read_file(system.file("gcs_if_stored_as_concept.sql",
-                                   package = "SeverityScoresOMOP")) %>%
-      translate(tolower(dialect)) %>%
-      render(schema = schema,
-              start_date = start_date,
-              end_date = end_date,
-              first_window = first_window,
-              last_window = last_window,
-              window_measurement = window_measurement)
-
-    #### Running the query
-    gcs_data <- dbGetQuery(conn, raw_sql)
-
-    ### Don't like joining here, but not much choice.
-    data <- full_join(data,
-                      gcs_data,
-                      by = c("person_id",
-                             "visit_occurrence_id",
-                             "visit_detail_id",
-                             "time_in_icu"))
-  }
-
-  # Getting comorbidities ---------------------------------------------------
-  # Some of these concepts may be stored in the observation table as a single
-  # variable, some in the condition_occurrence or
-  # procedure_occurrence table as multiple variables.
-  # This difference depends on the ETL paradigm applied.
-  # Queries are created observation table, condition_occurrence table,
-  # procedure_occurrence, device_exposure and, if
-  # applicable, the visit_detail table for emergency admission count.
-  # Note, now adding the device table as a means of getting other variables in
-
-  # TODO - get these into one query so joining can happen in SQL.
-  # Numeric values in the observation table are currently unsupported
-
-
-  # Some use a flag variable in visit_detail to record emergency admissions.
-  visit_detail_concepts <- concepts %>%
-    filter(table == "Visit Detail" & short_name == "emergency_admission")
-
-  # Get all available short_names from {dataset_name}_concepts.csv file.
+  # This collapsed list is required for the main sql query.
   all_required_variables <- concepts %>%
     filter(table %in% c("Measurement", "Observation", "Condition",
                         "Procedure", "Visit Detail", "Device")) %>%
@@ -330,73 +260,115 @@ get_score_variables <- function(conn, dialect, schema,
     toString(.) %>%
     glue(",", .)
 
-  # Initialize count query strings
-  visit_detail_variables_required = ""
+  # GCS needs a separate query if it uses concept IDs.
+  gcs_concepts <- concepts %>%
+    filter((short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
+              omop_variable == "value_as_concept_id"))
 
-  # Emergency admissions from the visit detail table
-  if (nrow(visit_detail_concepts) > 0) {
-    emergency_admission_concept <- visit_detail_concepts$concept_id
-    visit_detail_variables_required <- glue(
-      ",COUNT( CASE
+  if (nrow(gcs_concepts > 0)) {
+    # The SQL file currently has the GCS LOINC concepts hardcoded.
+    # I plan to construct it from here when I have time.
+    raw_sql <-
+      read_file(system.file("gcs_if_stored_as_concept.sql",
+                            package = "SeverityScoresOMOP")) %>%
+      translate(tolower(dialect)) %>%
+      render(schema = schema,
+             start_date = start_date,
+             end_date = end_date,
+             first_window = first_window,
+             last_window = last_window,
+             window_measurement = window_measurement)
+
+    # Running the query
+    gcs_data <- dbGetQuery(conn, raw_sql)
+  }
+
+  # Admisison type stored in the visit detail also needs a separate query,
+  # though it's run with everything else.
+
+    visit_detail_concepts <- concepts %>%
+      filter(table == "Visit Detail" & short_name == "emergency_admission")
+
+    # Initialize count query strings
+    visit_detail_variables_required = ""
+
+    # Emergency admissions from the visit detail table
+    if (nrow(visit_detail_concepts) > 0) {
+      emergency_admission_concept <- visit_detail_concepts$concept_id
+      visit_detail_variables_required <- glue(
+        ",COUNT( CASE
          WHEN vd.visit_detail_source_concept_id = {emergency_admission_concept}
          THEN vd.visit_detail_id
      END ) AS count_emergency_admission "
-    )
-  }
+      )
+    }
 
-  #### Importing the rest of the query from the script file.
-  raw_sql <-
-    read_file(system.file("history_variables.sql",
-                                 package = "SeverityScoresOMOP")) %>%
+  # Importing the physiology data query and substituting variables
+  raw_sql <- read_file(
+    system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
     translate(tolower(dialect)) %>%
-    render(
-      schema = schema,
-      start_date = start_date,
-      end_date = end_date,
-      first_window = first_window,
-      last_window = last_window,
-      required_variables = required_variables,
-      window_observation = window_query(window_start_point,
-                                        "o.observation_datetime",
-                                        "o.observation_date", cadence,
+    render(schema              = schema,
+           start_date         = start_date,
+           end_date           = end_date,
+           first_window       = first_window,
+           last_window        = last_window,
+           all_required_variables = all_required_variables,
+           window_measurement = window_query(window_start_point,
+                                              "m.measurement_datetime",
+                                              "m.measurement_date", cadence,
+                                              dialect),
+           window_observation = window_query(window_start_point,
+                                             "o.observation_datetime",
+                                             "o.observation_date", cadence,
+                                             dialect),
+           window_condition = window_query(window_start_point,
+                                           "co.condition_start_datetime",
+                                           "co.condition_start_date", cadence,
+                                           dialect),
+           window_procedure = window_query(window_start_point,
+                                           "po.procedure_datetime",
+                                           "po.procedure_date", cadence,
+                                           dialect),
+           window_device = window_query(window_start_point,
+                                        "de.device_exposure_start_datetime",
+                                        "de.device_exposure_start_date", cadence,
                                         dialect),
-      window_condition = window_query(window_start_point,
-                                      "co.condition_start_datetime",
-                                      "co.condition_start_date", cadence,
-                                      dialect),
-      window_procedure = window_query(window_start_point,
-                                      "po.procedure_datetime",
-                                      "po.procedure_date", cadence,
-                                      dialect),
-      window_device = window_query(window_start_point,
-                                   "de.device_exposure_start_datetime",
-                                   "de.device_exposure_start_date", cadence,
-                                   dialect),
-      observation_variables_required = observation_variables_required,
-      condition_variables_required = condition_variables_required,
-      procedure_variables_required = procedure_variables_required,
-      device_variables_required = device_variables_required,
-      visit_detail_variables_required = visit_detail_variables_required
-    )
+           measurement_variables = variables_query(concepts, "Measurement",
+                                                  "m.measurement_concept_id"),
+           observation_variables = variables_query(concepts, "Observation",
+                                                  "o.observation_concept_id",
+                                                  "o.value_as_concept_id",
+                                                  table_id_var =  "o.observation_id"),
+           condition_variables = variables_query(concepts, "Condition",
+                                                "co.condition_concept_id",
+                                                table_id_var = "co.condition_occurrence_id"),
+           procedure_variables = variables_query(concepts, "Procedure",
+                                                "po.procedure_concept_id",
+                                                table_id_var = "po.procedure_concept_id"),
+           device_variables = variables_query(concepts, "Device",
+                                             "de.device_concept_id",
+                                             table_id_var = "de.device_concept_id"),
+           visit_detail_variables = visit_detail_variables)
 
   #### Running the query
-  comorbidity_data <- dbGetQuery(conn, raw_sql)
-  # data <- comorbidity_data
-  #### Don't like having to merge here, but doing it for now.
-  data <- full_join(data,
-                    comorbidity_data,
-                    by = c("person_id",
-                           "visit_occurrence_id",
-                           "visit_detail_id",
-                           "icu_admission_datetime",
-                           "time_in_icu"))
+  data <- dbGetQuery(conn, raw_sql)
+
+  ### Don't like joining here, but not much choice.
+  if (nrow(gcs_concepts > 0)) {
+    data <- full_join(data,
+                      gcs_data,
+                      by = c("person_id",
+                             "visit_occurrence_id",
+                             "visit_detail_id",
+                             "time_in_icu"))
+  }
 
   # Joining to ICU admission details to get all patients
   data <- left_join(adm_details, data,
                     by = c("person_id",
-                                 "visit_occurrence_id",
-                                 "visit_detail_id",
-                                 "icu_admission_datetime"))
+                            "visit_occurrence_id",
+                            "visit_detail_id",
+                            "icu_admission_datetime"))
 
   as_tibble(data)
 }
