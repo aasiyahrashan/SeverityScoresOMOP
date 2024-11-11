@@ -113,31 +113,15 @@ get_score_variables <- function(conn, dialect, schema,
   if(!cadence > 0){
     stop("cadence must be a number > 0'")
   }
-  window_measurement <- ifelse(
-    window_start_point == "calendar_date",
-    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / ({cadence} * 60))")) %>%
-    translate(tolower(dialect))
-  window_observation <- ifelse(
-    window_start_point == "calendar_date",
-    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / ({cadence} * 60))")) %>%
-    translate(tolower(dialect))
-  window_condition <- ifelse(
-    window_start_point == "calendar_date",
-    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / ({cadence} * 60))")) %>%
-    translate(tolower(dialect))
-  window_procedure <- ifelse(
-    window_start_point == "calendar_date",
-    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / ({cadence} * 60))")) %>%
-    translate(tolower(dialect))
-  window_device <- ifelse(
-    window_start_point == "calendar_date",
-    " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date))",
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / ({cadence} * 60))")) %>%
-    translate(tolower(dialect))
+
+  # Defining function to create time intervals. Will be called for each table query
+  window_query <- function(window_start_point, time_variable, date_variable, cadence){
+    ifelse(
+      window_start_point == "calendar_date",
+      glue(" DATEDIFF(dd, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable}))"),
+      glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable})) / ({cadence} * 60))")) %>%
+      translate(tolower(dialect))
+  }
 
   # Getting the list of concept IDs required and creating SQL lines from them.
   concepts <- read_delim(file = concepts_file_path) %>%
@@ -207,12 +191,14 @@ get_score_variables <- function(conn, dialect, schema,
   raw_sql <- read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
     translate(tolower(dialect)) %>%
-    render(schema             = schema,
+    render(schema              = schema,
             start_date         = start_date,
             end_date           = end_date,
-            first_window            = first_window,
-            last_window            = last_window,
-            window_measurement = window_measurement,
+            first_window       = first_window,
+            last_window        = last_window,
+            window_measurement = window_query(window_start_point,
+                                              "m.measurement_datetime",
+                                              "m.measurement_date", cadence),
             variables_required = variables_required)
 
   #### Running the query
@@ -451,10 +437,18 @@ get_score_variables <- function(conn, dialect, schema,
       first_window = first_window,
       last_window = last_window,
       required_variables = required_variables,
-      window_observation = window_observation,
-      window_condition = window_condition,
-      window_procedure = window_procedure,
-      window_device = window_device,
+      window_observation = window_query(window_start_point,
+                                        "o.observation_datetime",
+                                        "o.observation_date", cadence),
+      window_condition = window_query(window_start_point,
+                                      "co.condition_start_datetime",
+                                      "co.condition_start_date", cadence),
+      window_procedure = window_query(window_start_point,
+                                      "po.procedure_datetime",
+                                      "po.procedure_date", cadence),
+      window_device = window_query(window_start_point,
+                                   "de.device_exposure_start_datetime",
+                                   "de.device_exposure_start_date", cadence),
       observation_variables_required = observation_variables_required,
       condition_variables_required = condition_variables_required,
       procedure_variables_required = procedure_variables_required,
