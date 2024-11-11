@@ -73,6 +73,12 @@ omop_connect <-
 #' Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
 #' If this option is chosen, cadence must be `24`.
 #' Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.
+#'
+#' @returns A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
+#' The `time_in_icu` variable is the amount of time spent in ICU. The unit depends on cadence. If cadence is 24, the unit will be a day.
+#' If cadence is 1, the unit will be an hour, and so on.
+#' The columns returned will be named using the short_names specified in the `mapping_path` file
+#'
 #' @import lubridate
 #' @import DBI
 #' @import dplyr
@@ -110,27 +116,27 @@ get_score_variables <- function(conn, dialect, schema,
   window_measurement <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60))") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (cadence * 60))") %>%
     translate(tolower(dialect))
   window_observation <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60))") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (cadence * 60))") %>%
     translate(tolower(dialect))
   window_condition <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60))") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (cadence * 60))") %>%
     translate(tolower(dialect))
   window_procedure <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60))") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (cadence * 60))") %>%
     translate(tolower(dialect))
   window_device <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / (24 * 60))") %>%
+    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / (cadence * 60))") %>%
     translate(tolower(dialect))
 
   # Getting the list of concept IDs required and creating SQL lines from them.

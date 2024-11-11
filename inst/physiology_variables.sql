@@ -19,7 +19,7 @@ AS (
 		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) <= @end_date
 	)
 SELECT adm.*
-	, @window_measurement as days_in_icu
+	, @window_measurement as time_in_icu
 	--- List of concept IDs to get the min/max of, along with names to assign them to.
 	-- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
 	@variables_required
@@ -29,8 +29,8 @@ INNER JOIN @schema.measurement m
 	ON adm.person_id = m.person_id
 	AND adm.visit_occurrence_id = m.visit_occurrence_id
 	AND (adm.visit_detail_id = m.visit_detail_id OR adm.visit_detail_id IS NULL)
-	AND @window_measurement >= '@min_day'
-	AND @window_measurement < '@max_day'
+	AND @window_measurement >= '@first_window'
+	AND @window_measurement < '@last_window'
 -- getting unit of measure for numeric variables.
 LEFT JOIN @schema.concept c_unit ON m.unit_concept_id = c_unit.concept_id
 	AND m.unit_concept_id IS NOT NULL

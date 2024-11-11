@@ -30,7 +30,7 @@ observation_comorbidity
 AS (SELECT o.person_id
            ,o.visit_occurrence_id
            ,o.visit_detail_id
-           ,@window_observation AS days_in_icu
+           ,@window_observation AS time_in_icu
            @observation_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.observation o
@@ -47,7 +47,7 @@ condition_comorbidity
 AS (SELECT co.person_id
            ,co.visit_occurrence_id
            ,co.visit_detail_id
-           ,@window_condition AS days_in_icu
+           ,@window_condition AS time_in_icu
            @condition_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.condition_occurrence co
@@ -64,7 +64,7 @@ procedure_comorbidity
 AS (SELECT po.person_id
            ,po.visit_occurrence_id
            ,po.visit_detail_id
-           ,@window_procedure AS days_in_icu
+           ,@window_procedure AS time_in_icu
            @procedure_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.procedure_occurrence po
@@ -81,7 +81,7 @@ device_comorbidity
 AS (SELECT de.person_id
            ,de.visit_occurrence_id
            ,de.visit_detail_id
-           ,@window_device AS days_in_icu
+           ,@window_device AS time_in_icu
            @device_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.device_exposure de
@@ -99,7 +99,7 @@ AS (SELECT vd.person_id
            ,vd.visit_occurrence_id
            ,vd.visit_detail_id
            --- has to be 0 since ICU admission datetime is derived from the same variables.
-           ,0 AS days_in_icu
+           ,0 AS time_in_icu
            @visit_detail_variables_required
       FROM icu_admission_details adm
       INNER JOIN @schema.visit_detail vd
@@ -112,42 +112,42 @@ AS (SELECT vd.person_id
     )
 
     SELECT adm.*
-           ,COALESCE(o.days_in_icu, co.days_in_icu, po.days_in_icu, vd.days_in_icu) AS days_in_icu
+           ,COALESCE(o.time_in_icu, co.time_in_icu, po.time_in_icu, vd.time_in_icu) AS time_in_icu
            @required_variables
       FROM icu_admission_details adm
 LEFT JOIN observation_comorbidity o
         ON adm.person_id           = o.person_id
        AND adm.visit_occurrence_id = o.visit_occurrence_id
        AND (adm.visit_detail_id = o.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.days_in_icu >= '@min_day'
-			 AND o.days_in_icu < '@max_day'
+       AND o.time_in_icu >= '@first_window'
+			 AND o.time_in_icu < '@last_window'
 LEFT JOIN condition_comorbidity co
         ON adm.person_id           = co.person_id
        AND adm.visit_occurrence_id = co.visit_occurrence_id
        AND (adm.visit_detail_id = co.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.days_in_icu = co.days_in_icu
-       AND co.days_in_icu >= '@min_day'
-			 AND co.days_in_icu < '@max_day'
+       AND o.time_in_icu = co.time_in_icu
+       AND co.time_in_icu >= '@first_window'
+			 AND co.time_in_icu < '@last_window'
 LEFT JOIN procedure_comorbidity po
         ON adm.person_id           = po.person_id
        AND adm.visit_occurrence_id = po.visit_occurrence_id
        AND (adm.visit_detail_id = po.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.days_in_icu = po.days_in_icu
-       AND po.days_in_icu >= '@min_day'
-			 AND po.days_in_icu < '@max_day'
+       AND o.time_in_icu = po.time_in_icu
+       AND po.time_in_icu >= '@first_window'
+			 AND po.time_in_icu < '@last_window'
 LEFT JOIN device_comorbidity de
         ON adm.person_id           = de.person_id
        AND adm.visit_occurrence_id = de.visit_occurrence_id
        AND (adm.visit_detail_id = de.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.days_in_icu = de.days_in_icu
-       AND de.days_in_icu >= '@min_day'
-			 AND de.days_in_icu < '@max_day'
+       AND o.time_in_icu = de.time_in_icu
+       AND de.time_in_icu >= '@first_window'
+			 AND de.time_in_icu < '@last_window'
 LEFT JOIN visit_detail_emergency_admission vd
         ON adm.person_id           = vd.person_id
        AND adm.visit_occurrence_id = vd.visit_occurrence_id
        AND (adm.visit_detail_id = vd.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.days_in_icu = vd.days_in_icu
-       AND vd.days_in_icu >= '@min_day'
-			 AND vd.days_in_icu < '@max_day'
-WHERE COALESCE(o.days_in_icu, co.days_in_icu, po.days_in_icu, de.days_in_icu,
-                vd.days_in_icu) IS NOT NULL
+       AND o.time_in_icu = vd.time_in_icu
+       AND vd.time_in_icu >= '@first_window'
+			 AND vd.time_in_icu < '@last_window'
+WHERE COALESCE(o.time_in_icu, co.time_in_icu, po.time_in_icu, de.time_in_icu,
+                vd.time_in_icu) IS NOT NULL
