@@ -116,27 +116,27 @@ get_score_variables <- function(conn, dialect, schema,
   window_measurement <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (cadence * 60))") %>%
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / ({cadence} * 60))")) %>%
     translate(tolower(dialect))
   window_observation <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (cadence * 60))") %>%
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / ({cadence} * 60))")) %>%
     translate(tolower(dialect))
   window_condition <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (cadence * 60))") %>%
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / ({cadence} * 60))")) %>%
     translate(tolower(dialect))
   window_procedure <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (cadence * 60))") %>%
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / ({cadence} * 60))")) %>%
     translate(tolower(dialect))
   window_device <- ifelse(
     window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date))",
-    " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / (cadence * 60))") %>%
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / ({cadence} * 60))")) %>%
     translate(tolower(dialect))
 
   # Getting the list of concept IDs required and creating SQL lines from them.
@@ -247,7 +247,7 @@ get_score_variables <- function(conn, dialect, schema,
                       by = c("person_id",
                              "visit_occurrence_id",
                              "visit_detail_id",
-                             "days_in_icu"))
+                             "time_in_icu"))
   }
 
   # Getting comorbidities ---------------------------------------------------
@@ -472,7 +472,7 @@ get_score_variables <- function(conn, dialect, schema,
                            "visit_occurrence_id",
                            "visit_detail_id",
                            "icu_admission_datetime",
-                           "days_in_icu"))
+                           "time_in_icu"))
 
   # Joining to ICU admission details to get all patients
   data <- left_join(adm_details, data,
