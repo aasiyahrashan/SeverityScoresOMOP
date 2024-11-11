@@ -31,7 +31,7 @@ AS (
 	SELECT adm.person_id
 		,adm.visit_occurrence_id
 		,adm.visit_detail_id
-		,@window_measurement AS days_in_icu
+		,@window_measurement AS time_in_icu
 		,COALESCE(m.measurement_datetime, m.measurement_date) AS measurement_datetime
 		--- The max here is just a method of getting the output into wide format.
 		-- There shouldn't be more than one measurement at exactly the same time.
@@ -74,7 +74,7 @@ AS (
 	SELECT person_id
 		,visit_occurrence_id
 		,visit_detail_id
-		,days_in_icu
+		,time_in_icu
 		,CASE
 			WHEN gcs_eye = '45877537'
 				THEN 1
@@ -117,11 +117,11 @@ AS (
 SELECT person_id
 	,visit_occurrence_id
 	,visit_detail_id
-	,days_in_icu
+	,time_in_icu
 	,MIN(gcs_eye + gcs_motor + gcs_verbal) AS min_gcs
 	,MAX(gcs_eye + gcs_motor + gcs_verbal) AS max_gcs
 FROM gcs_numbers
 GROUP BY person_id
 	,visit_occurrence_id
 	,visit_detail_id
-	,days_in_icu
+	,time_in_icu

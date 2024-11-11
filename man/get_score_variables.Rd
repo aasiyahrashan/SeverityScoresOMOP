@@ -12,12 +12,13 @@ get_score_variables(
   schema,
   start_date,
   end_date,
-  min_day,
-  max_day,
+  first_window,
+  last_window,
   concepts_file_path,
   severity_score,
   age_method = "dob",
-  window_method = "calendar_date"
+  cadence = 24,
+  window_start_point = "calendar_date"
 )
 }
 \arguments{
@@ -27,26 +28,48 @@ get_score_variables(
 
 \item{schema}{The name of the schema you want to query.}
 
-\item{start_date}{The earliest ICU admission date/datetime. Needs to be in character format.}
+\item{first_window}{An integer >= 0
+First timepoint (depending on cadence argument)
+since ICU admission to get physiology data for, starting with 0.
+Eg, if cadence is 24, 0 will be the first day. If cadence is 1, 0 will be the first hour.}
 
-\item{end_date}{As above, but for last date}
-
-\item{min_day}{Days since ICU admission to get physiology data for, starting with 0.}
-
-\item{max_day}{Days since ICU admission to get physiology data for.}
+\item{last_window}{An integer >= 0
+Last timepoint (depending on cadence argument)
+since ICU admission to get physiology data for.}
 
 \item{severity_score}{A vector including the names of the severity scores to calculate.
-Currently supports "APACHE II" and "SOFA"}
+Currently supports "APACHE II" and "SOFA".
+(TODO, remove this argument and allow all variables in the csv file to be read in.)}
 
 \item{age_method}{Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
 Default is 'dob'}
 
-\item{window_method}{This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
+\item{cadence}{A number > 0. Represents the unit of time used for each row per patient returned.
+The argument is specified in multiples of an hour. Eg, '24' represents a day, '1' represents an hour,
+'0.5' is 30 minutes. Defaults to '24' so a day is returned.
+Use in this argument in conjuction with the `first_window` and `last_window` arguments above to decide
+how much data to extract.
+Eg, a `cadence` of 24 with `first_window = 0` and `last_window = 3` will return data from the
+first 4 days of admission, with one row per day.}
+
+\item{window_start_point}{Only applicable if `cadence = 24`. Decides how to define days.
+ Either `calendar_date` or `icu_admission_time`.
 Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
+If this option is chosen, cadence must be `24`.
 Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.}
+
+\item{start_datetime}{The earliest ICU admission date/datetime. Needs to be in character format.}
+
+\item{end_datetime}{As above, but for last date}
 
 \item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 Should match the example_concepts.tsv file format.}
+}
+\value{
+A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
+The `time_in_icu` variable is the amount of time spent in ICU. The unit depends on cadence. If cadence is 24, the unit will be a day.
+If cadence is 1, the unit will be an hour, and so on.
+The columns returned will be named using the short_names specified in the `mapping_path` file
 }
 \description{
 Queries a database to get variables required for a specified severity score.
