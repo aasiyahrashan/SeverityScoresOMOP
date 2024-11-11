@@ -47,11 +47,16 @@ window_query <- function(window_start_point, time_variable, date_variable, caden
 }
 
 #' Internal function called in `get_score_variables`.
-#' Builds the 'variable required query for each table
+#' Builds the 'variable required' query for each table
 variables_required_query <- function(concepts, table_name,
-                                     concept_id_var_name){
+                                     concept_id_var_name,
+                                     value_as_concept_id_var = ""
+                                     table_id_var = ""){
 
-  concepts <-
+  variables_required = ""
+
+  # Numeric variables
+  numeric_concepts <-
     concepts %>%
     filter(table == table_name) %>%
     #### GCS can sometimes be stored as a concept ID instead
@@ -75,13 +80,60 @@ variables_required_query <- function(concepts, table_name,
                END) AS unit_{short_name}"
       ))
 
-  ## Collapsing all the queries into a string.
+  # Non-numeric variables. Returns counts.
+  non_numeric_concepts <-
+    concepts %>%
+    filter(table == table_name &
+             (omop_variable == "value_as_concept_id" |
+                is.na(omop_variable))) %>%
+    # It's possible for multiple concept IDs to represent the same variable, so grouping here.
+    group_by(short_name, omop_variable) %>%
+    summarise(
+      # This is slightly odd, but just makes sure we don't duplicate concept
+      # IDs in cases where we're selecting specific values
+      # The query returns the number of rows matching the concept IDs provided.
+      concept_id = ifelse(length(unique(concept_id)) == 1,
+                          as.character(unique(concept_id)),
+                          glue("'",
+                               glue_collapse(unique(concept_id), sep = "', '"),
+                               "'")),
+      concept_id_value = glue(
+        "'",
+        glue_collapse(concept_id_value, sep = "', '"),
+        "'"
+      )
+    ) %>%
+    # Separate queries depending on whether the concept ID variable is filled.
+    mutate(count_query = case_when(
+      omop_variable == "value_as_concept_id" ~
+        glue(
+          ", COUNT ( CASE WHEN {concept_id_var_name} = {concept_id}
+                        AND {value_as_concept_id_var}
+                        IN ({concept_id_value})
+                        THEN {table_id_var}
+                    END ) AS count_{short_name}"
+        ),
+      is.na(omop_variable) ~
+        glue(
+          ", COUNT ( CASE WHEN {concept_id_var_name} IN ({concept_id})
+                        THEN {table_id_var}
+                    END ) AS count_{short_name}"
+        )
+    ))
+
+  # Collapsing the queries into strings.
   variables_required <-
-    glue(glue_collapse(concepts$max_query, sep = "\n"),
+    glue(glue_collapse(numeric_concepts$max_query, sep = "\n"),
          "\n",
-         glue_collapse(concepts$min_query, sep = "\n"),
+         glue_collapse(numeric_concepts$min_query, sep = "\n"),
          "\n",
-         glue_collapse(concepts$unit_query, sep = "\n"))
+         glue_collapse(numeric_concepts$unit_query, sep = "\n"),
+         "\n",
+         glue_collapse(observation_concepts$count_query, sep = "\n"),
+         "\n")
+
+  # Return query
+  variables_required
 }
 
 
@@ -263,20 +315,6 @@ get_score_variables <- function(conn, dialect, schema,
   # TODO - get these into one query so joining can happen in SQL.
   # Numeric values in the observation table are currently unsupported
 
-  # Get possible comorbidity concept_ids from {dataset_name}_concepts.csv file.
-  observation_concepts <- concepts %>%
-    filter(table == "Observation" &
-             (omop_variable == "value_as_concept_id" |
-             is.na(omop_variable)))
-
-  condition_concepts <- concepts %>%
-    filter(table == "Condition")
-
-  procedure_concepts <- concepts %>%
-    filter(table == "Procedure")
-
-  device_concepts <- concepts %>%
-    filter(table == "Device")
 
   # Some use a flag variable in visit_detail to record emergency admissions.
   visit_detail_concepts <- concepts %>%
@@ -284,7 +322,7 @@ get_score_variables <- function(conn, dialect, schema,
 
   # Get all available short_names from {dataset_name}_concepts.csv file.
   required_variables <- concepts %>%
-    filter(table %in% c("Observation", "Condition",
+    filter(table %in% c("Measurement", "Observation", "Condition",
                         "Procedure", "Visit Detail", "Device")) %>%
     mutate(short_name = glue("count_{short_name}")) %>%
     distinct(short_name) %>%
@@ -293,140 +331,7 @@ get_score_variables <- function(conn, dialect, schema,
     glue(",", .)
 
   # Initialize count query strings
-  observation_variables_required  = ""
-  condition_variables_required    = ""
-  procedure_variables_required    = ""
-  device_variables_required    = ""
   visit_detail_variables_required = ""
-
-  #### Comorbidities from observation table
-  # Most use several concepts IDs to represent the same score variable.
-  # Eg, CCAA uses 3 codes for renal failure. Collapsing those here.
-  # The query returns the number of rows matching the concept IDs provided.
-
-  if (nrow(observation_concepts) > 0) {
-    observation_concepts <- observation_concepts %>%
-      group_by(short_name, omop_variable) %>%
-      summarise(
-        # This is slightly odd, but just makes sure we don't duplicate concept
-        # IDs in cases where we're selecting specific values
-        concept_id = ifelse(length(unique(concept_id)) == 1,
-                            as.character(unique(concept_id)),
-                            glue("'",
-                                 glue_collapse(unique(concept_id), sep = "', '"),
-                                 "'")),
-        concept_id_value = glue(
-          "'",
-          glue_collapse(concept_id_value, sep = "', '"),
-          "'"
-        )
-      ) %>%
-      # Separate queries depending on whether the concept ID variable is filled.
-      mutate(count_query = case_when(
-        omop_variable == "value_as_concept_id" ~
-        glue(
-        ", COUNT ( CASE WHEN o.observation_concept_id = {concept_id}
-                        AND o.value_as_concept_id
-                        IN ({concept_id_value})
-                        THEN o.observation_id
-                    END ) AS count_{short_name}"
-      ),
-      is.na(omop_variable) ~
-      glue(
-        ", COUNT ( CASE WHEN o.observation_concept_id IN ({concept_id})
-                        THEN o.observation_id
-                    END ) AS count_{short_name}"
-      )
-      ))
-
-    ## Collapsing the queries into strings.
-    observation_variables_required <-
-      glue(
-        glue_collapse(observation_concepts$count_query, sep = "\n"),
-        "\n"
-      )
-  }
-
-  #### Comorbidities from condition_occurrence
-  # Most use several concepts IDs to represent the same score variable.
-  # E.g., CCAA uses 3 codes for renal failure. Collapsing those here.
-  # The query returns the number of rows matching the concept IDs provided.
-  if (nrow(condition_concepts) > 0) {
-    condition_concepts <- condition_concepts %>%
-      group_by(short_name) %>%
-      summarise(concept_id =
-                  glue("'",
-                       glue_collapse(concept_id, sep = "', '"),
-                       "'")
-      ) %>%
-      mutate(count_query =
-               glue(",COUNT(CASE
-                                 WHEN co.condition_concept_id IN ({concept_id})
-                                 THEN co.condition_occurrence_id
-                            END) AS count_{short_name}")
-      )
-
-    ## Collapsing the queries into strings.
-    condition_variables_required <-
-      glue(
-        glue_collapse(condition_concepts$count_query, sep = "\n"),
-        "\n"
-      )
-  }
-
-  # Comorbidities from procedure_occurrence
-  # Most use several concepts IDs to represent the same score variable.
-  # E.g., CCAA uses 3 codes for renal failure. Collapsing those here.
-  # The query returns the number of rows matching the concept IDs provided.
-  if (nrow(procedure_concepts) > 0) {
-    procedure_concepts <- procedure_concepts %>%
-      group_by(short_name) %>%
-      summarise(concept_id =
-                  glue("'",
-                       glue_collapse(concept_id, sep = "', '"),
-                       "'")
-      ) %>%
-      mutate(count_query =
-               glue(",COUNT(CASE
-                                 WHEN po.procedure_concept_id IN ({concept_id})
-                                 THEN po.procedure_concept_id
-                            END) AS count_{short_name}")
-      )
-
-    ## Collapsing the queries into strings.
-    procedure_variables_required <-
-      glue(
-        glue_collapse(procedure_concepts$count_query, sep = "\n"),
-        "\n"
-      )
-  }
-
-  # Comorbidities from device_exposure
-  # Most use several concepts IDs to represent the same score variable.
-  # E.g., CCAA uses 3 codes for renal failure. Collapsing those here.
-  # The query returns the number of rows matching the concept IDs provided.
-  if (nrow(device_concepts) > 0) {
-    device_concepts <- device_concepts %>%
-      group_by(short_name) %>%
-      summarise(concept_id =
-                  glue("'",
-                       glue_collapse(concept_id, sep = "', '"),
-                       "'")
-      ) %>%
-      mutate(count_query =
-               glue(",COUNT(CASE
-                                 WHEN device_concept_id IN ({concept_id})
-                                 THEN de.device_concept_id
-                            END) AS count_{short_name}")
-      )
-
-    ## Collapsing the queries into strings.
-    device_variables_required <-
-      glue(
-        glue_collapse(device_concepts$count_query, sep = "\n"),
-        "\n"
-      )
-  }
 
   # Emergency admissions from the visit detail table
   if (nrow(visit_detail_concepts) > 0) {
