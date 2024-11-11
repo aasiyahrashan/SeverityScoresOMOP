@@ -33,6 +33,58 @@ omop_connect <-
     }
   }
 
+#' Internal function called in `get_score_variables`.
+#' Builds the windowing query based on variable names in each table.
+window_query <- function(window_start_point, time_variable, date_variable, cadence,
+                         dialect){
+  ifelse(
+    window_start_point == "calendar_date",
+    # Returns one row per day based on calendar date rather than admission time.
+    glue(" DATEDIFF(dd, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable}))"),
+    # Uses admission date as starting point, returns rows based on cadence argument.
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable})) / ({cadence} * 60))")) %>%
+    translate(tolower(dialect))
+}
+
+#' Internal function called in `get_score_variables`.
+#' Builds the 'variable required query for each table
+variables_required_query <- function(concepts, table_name,
+                                     concept_id_var_name){
+
+  concepts <-
+    concepts %>%
+    filter(table == table_name) %>%
+    #### GCS can sometimes be stored as a concept ID instead
+    #### of a number. These need a separate query.
+    filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
+               omop_variable == "value_as_concept_id")) %>%
+    mutate(
+      max_query = glue(
+        ", MAX(CASE WHEN {concept_id_var_name} = {concept_id}
+                    THEN m.{omop_variable}
+               END) AS max_{short_name}"
+      ),
+      min_query = glue(
+        ", MIN(CASE WHEN {concept_id_var_name} = {concept_id}
+                    THEN m.{omop_variable}
+               END) AS min_{short_name}"
+      ),
+      unit_query = glue(
+        ", MIN(CASE WHEN {concept_id_var_name} = {concept_id}
+                    THEN c_unit.concept_name
+               END) AS unit_{short_name}"
+      ))
+
+  ## Collapsing all the queries into a string.
+  variables_required <-
+    glue(glue_collapse(concepts$max_query, sep = "\n"),
+         "\n",
+         glue_collapse(concepts$min_query, sep = "\n"),
+         "\n",
+         glue_collapse(concepts$unit_query, sep = "\n"))
+}
+
+
 #' Queries a database to get variables required for a specified severity score.
 #' Assumes visit detail table contains ICU admission information. If not
 #' available, uses visit_occurrence.
@@ -114,15 +166,6 @@ get_score_variables <- function(conn, dialect, schema,
     stop("cadence must be a number > 0'")
   }
 
-  # Defining function to create time intervals. Will be called for each table query
-  window_query <- function(window_start_point, time_variable, date_variable, cadence){
-    ifelse(
-      window_start_point == "calendar_date",
-      glue(" DATEDIFF(dd, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable}))"),
-      glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable})) / ({cadence} * 60))")) %>%
-      translate(tolower(dialect))
-  }
-
   # Getting the list of concept IDs required and creating SQL lines from them.
   concepts <- read_delim(file = concepts_file_path) %>%
     # Filtering for the scores required.
@@ -155,38 +198,6 @@ get_score_variables <- function(conn, dialect, schema,
 
   adm_details <- dbGetQuery(conn, raw_sql)
 
-  # Getting concepts stored in the measurement table.
-  measurement_concepts <- concepts %>%
-    filter(table == "Measurement") %>%
-    #### GCS can sometimes be stored as a concept ID instead
-    #### of a number. These need a separate query.
-    filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-               omop_variable == "value_as_concept_id")) %>%
-    mutate(
-      max_query = glue(
-        ", MAX(CASE WHEN m.measurement_concept_id = {concept_id}
-                    THEN m.{omop_variable}
-               END) AS max_{short_name}"
-      ),
-      min_query = glue(
-        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id}
-                    THEN m.{omop_variable}
-               END) AS min_{short_name}"
-      ),
-      unit_query = glue(
-        ", MIN(CASE WHEN m.measurement_concept_id = {concept_id}
-                    THEN c_unit.concept_name
-               END) AS unit_{short_name}"
-      ))
-
-  ## Collapsing all the queries into a string.
-  variables_required <-
-    glue(glue_collapse(measurement_concepts$max_query, sep = "\n"),
-         "\n",
-         glue_collapse(measurement_concepts$min_query, sep = "\n"),
-         "\n",
-         glue_collapse(measurement_concepts$unit_query, sep = "\n"))
-
   # Importing the rest of the query from the text file.
   raw_sql <- read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
@@ -198,8 +209,11 @@ get_score_variables <- function(conn, dialect, schema,
             last_window        = last_window,
             window_measurement = window_query(window_start_point,
                                               "m.measurement_datetime",
-                                              "m.measurement_date", cadence),
-            variables_required = variables_required)
+                                              "m.measurement_date", cadence,
+                                              dialect),
+            variables_required = variables_required_query(concepts,
+                                                          "Measurement",
+                                                          "m.measurement_concept_id"))
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
@@ -439,16 +453,20 @@ get_score_variables <- function(conn, dialect, schema,
       required_variables = required_variables,
       window_observation = window_query(window_start_point,
                                         "o.observation_datetime",
-                                        "o.observation_date", cadence),
+                                        "o.observation_date", cadence,
+                                        dialect),
       window_condition = window_query(window_start_point,
                                       "co.condition_start_datetime",
-                                      "co.condition_start_date", cadence),
+                                      "co.condition_start_date", cadence,
+                                      dialect),
       window_procedure = window_query(window_start_point,
                                       "po.procedure_datetime",
-                                      "po.procedure_date", cadence),
+                                      "po.procedure_date", cadence,
+                                      dialect),
       window_device = window_query(window_start_point,
                                    "de.device_exposure_start_datetime",
-                                   "de.device_exposure_start_date", cadence),
+                                   "de.device_exposure_start_date", cadence,
+                                   dialect),
       observation_variables_required = observation_variables_required,
       condition_variables_required = condition_variables_required,
       procedure_variables_required = procedure_variables_required,
