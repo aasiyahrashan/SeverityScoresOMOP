@@ -2,8 +2,8 @@
 - Use `devtools::install_github("aasiyahrashan/SeverityScoresOMOP", auth_token = "your_PAT")`
 - The personal access token is necessary, since this is currently a private repository
 
-#### This package calculates the APACHE II ICU risk prediction score and probability of mortality.
-#### It can also calculate the SOFA score.
+#### This package reads in data from OMOP to calculate the APACHE II and SOFA scores. 
+#### It also provides a convenient method of reading in other variables summarised into time windows.
 - Works on databases in the OMOP CDM format version 5.4. 
 - Copy the `inst/example_concepts.csv` file. Save it under the name `your_dataset_name_concepts.csv`. The file needs to be filled in with the OMOP concept IDs that match the `short_names`. Don't edit the short names, since they're used in the code.
 ````
@@ -56,7 +56,6 @@
 
 #### TODO
 - Adapt the SQL queries to work for OMOP 5.3.1
-- Adapt the queries and connections to work with non-postgres databases. 
 - Match pao2, paco2 and fio2s instead of just getting min and max.
 - Same for MAP. Currently getting max and min SBP and DBP. 
 - Write mortality prediction calculation

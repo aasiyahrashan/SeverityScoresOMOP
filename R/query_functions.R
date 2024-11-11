@@ -40,27 +40,38 @@ omop_connect <-
 #' @param conn A connection object to a database
 #' @param dialect dialect A dialect supported by SQLRender
 #' @param schema The name of the schema you want to query.
-#' @param start_date
+#' @param start_datetime
 #' The earliest ICU admission date/datetime. Needs to be in character format.
-#' @param end_date
+#' @param end_datetime
 #' As above, but for last date
-#' @param min_day
-#' Days since ICU admission to get physiology data for, starting with 0.
-#' @param max_day
-#' Days since ICU admission to get physiology data for.
+#' @param first_window An integer >= 0
+#' First timepoint (depending on cadence argument)
+#' since ICU admission to get physiology data for, starting with 0.
+#' Eg, if cadence is 24, 0 will be the first day. If cadence is 1, 0 will be the first hour.
+#' @param last_window An integer >= 0
+#' Last timepoint (depending on cadence argument)
+#' since ICU admission to get physiology data for.
 #' @param mapping_path
 #' Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 #' Should match the example_concepts.tsv file format.
 #' @param severity_score
 #' A vector including the names of the severity scores to calculate.
-#' Currently supports "APACHE II" and "SOFA"
+#' Currently supports "APACHE II" and "SOFA".
+#' (TODO, remove this argument and allow all variables in the csv file to be read in.)
 #' @param age_method
 #' Either 'year_only' or 'dob'. Decides if age is calculated from year of birth or full DOB
 #' Default is 'dob'
-#' @param window_method
-#'  Either 'calendar_date' or '24_hrs'.
-#'  This decides how to determine days spent in ICU. Options are calendar_date or 24_hrs
+#' @param cadence A number > 0. Represents the unit of time used for each row per patient returned.
+#' The argument is specified in multiples of an hour. Eg, '24' represents a day, '1' represents an hour,
+#' '0.5' is 30 minutes. Defaults to '24' so a day is returned.
+#' Use in this argument in conjuction with the `first_window` and `last_window` arguments above to decide
+#' how much data to extract.
+#' Eg, a `cadence` of 24 with `first_window = 0` and `last_window = 3` will return data from the
+#' first 4 days of admission, with one row per day.
+#' @param window_start_point Only applicable if `cadence = 24`. Decides how to define days.
+#'  Either `calendar_date` or `icu_admission_time`.
 #' Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
+#' If this option is chosen, cadence must be `24`.
 #' Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.
 #' @import lubridate
 #' @import DBI
@@ -73,41 +84,51 @@ omop_connect <-
 #' @export
 get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,
-                                min_day, max_day,
+                                first_window, last_window,
                                 concepts_file_path,
                                 severity_score,
                                 age_method = "dob",
-                                window_method = "calendar_date") {
+                                cadence = 24,
+                                window_start_point = "calendar_date") {
   # Editing the date variables to keep explicit single quote for SQL
   start_date <- single_quote(start_date)
   end_date <- single_quote(end_date)
 
   # Creating windowing query
-  if (!(window_method %in% c("calendar_date", "24_hrs"))) {
-    stop("Error: window_method must be either 'calendar_date' or '24_hrs'")
-    }
+  if (!(window_start_point %in% c("calendar_date", "icu_admission_time"))) {
+    stop("Error: window_start_point must be either 'calendar_date' or 'icu_admission_time'")
+  }
+
+  if (window_start_point == "calendar_date" & cadence != 24) {
+    stop("Error: Since window_start_point is set to 'calendar_date', cadence must be 24.
+         Either edit the window_start_point to 'icu_admission_time', or edit the cadence to 24.")
+  }
+
+  if(!cadence > 0){
+    stop("cadence must be a number > 0'")
+  }
   window_measurement <- ifelse(
-    window_method == "calendar_date",
+    window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date))",
     " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(m.measurement_datetime, m.measurement_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_observation <- ifelse(
-    window_method == "calendar_date",
+    window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date))",
     " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(o.observation_datetime, o.observation_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_condition <- ifelse(
-    window_method == "calendar_date",
+    window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date))",
     " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(co.condition_start_datetime, co.condition_start_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_procedure <- ifelse(
-    window_method == "calendar_date",
+    window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date))",
     " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(po.procedure_datetime, po.procedure_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
   window_device <- ifelse(
-    window_method == "calendar_date",
+    window_start_point == "calendar_date",
     " DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date))",
     " FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(de.device_exposure_start_datetime, de.device_exposure_start_date)) / (24 * 60))") %>%
     translate(tolower(dialect))
@@ -183,8 +204,8 @@ get_score_variables <- function(conn, dialect, schema,
     render(schema             = schema,
             start_date         = start_date,
             end_date           = end_date,
-            min_day            = min_day,
-            max_day            = max_day,
+            first_window            = first_window,
+            last_window            = last_window,
             window_measurement = window_measurement,
             variables_required = variables_required)
 
@@ -207,8 +228,8 @@ get_score_variables <- function(conn, dialect, schema,
       render(schema = schema,
               start_date = start_date,
               end_date = end_date,
-              min_day = min_day,
-              max_day = max_day,
+              first_window = first_window,
+              last_window = last_window,
               window_measurement = window_measurement)
 
     #### Running the query
@@ -421,8 +442,8 @@ get_score_variables <- function(conn, dialect, schema,
       schema = schema,
       start_date = start_date,
       end_date = end_date,
-      min_day = min_day,
-      max_day = max_day,
+      first_window = first_window,
+      last_window = last_window,
       required_variables = required_variables,
       window_observation = window_observation,
       window_condition = window_condition,
