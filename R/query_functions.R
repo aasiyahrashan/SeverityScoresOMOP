@@ -85,7 +85,7 @@ variables_query <- function(concepts, table_name,
       additional_filter_query =
         if_else(!is.na(additional_filter_variable_name),
                 glue("AND {additional_filter_variable_name}
-              IN ({additional_filter_value})"), ""),
+              IN ({additional_filter_value})"), "", ""),
       max_query = glue(
         ", MAX(CASE WHEN {concept_id_var_name} = {concept_id}
            {additional_filter_query}
@@ -138,13 +138,13 @@ variables_query <- function(concepts, table_name,
       value_as_concept_id_query = if_else(
         omop_variable == "value_as_concept_id",
         glue("AND {value_as_concept_id_var}
-              IN ({concept_id_value})"), ""),
+              IN ({concept_id_value})"), "", ""),
       additional_filter_query =
         if_else(!is.na(additional_filter_variable_name),
                 glue("AND {additional_filter_variable_name}
-              IN ({additional_filter_value})"), ""),
+              IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN {concept_id_var_name} = {concept_id}
+        ", COUNT ( CASE WHEN {concept_id_var_name} IN ({concept_id})
            {value_as_concept_id_query}
            {additional_filter_query}
            THEN {table_id_var}
@@ -162,6 +162,8 @@ variables_query <- function(concepts, table_name,
          "\n")
 
   # Return query
+  print(table_name)
+  print(variables_required)
   variables_required
 }
 
