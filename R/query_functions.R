@@ -87,19 +87,19 @@ variables_query <- function(concepts, table_name,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       max_query = glue(
-        ", MAX(CASE WHEN {concept_id_var_name} = {concept_id}
+        ", MAX(CASE WHEN {concept_id_var_name} IN ({concept_id})
            {additional_filter_query}
                     THEN {omop_variable}
                END) AS max_{short_name}"
       ),
       min_query = glue(
-        ", MIN(CASE WHEN {concept_id_var_name} = {concept_id}
+        ", MIN(CASE WHEN {concept_id_var_name} IN ({concept_id})
            {additional_filter_query}
                     THEN {omop_variable}
                END) AS min_{short_name}"
       ),
       unit_query = glue(
-        ", MIN(CASE WHEN {concept_id_var_name} = {concept_id}
+        ", MIN(CASE WHEN {concept_id_var_name} IN ({concept_id})
            {additional_filter_query}
                     THEN c_unit.concept_name
                END) AS unit_{short_name}"
