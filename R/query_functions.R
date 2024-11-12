@@ -162,8 +162,6 @@ variables_query <- function(concepts, table_name,
          "\n")
 
   # Return query
-  print(table_name)
-  print(variables_required)
   variables_required
 }
 
