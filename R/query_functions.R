@@ -279,6 +279,23 @@ get_score_variables <- function(conn, dialect, schema,
     # Filtering for the scores required.
     filter(str_detect(score, paste(severity_score, collapse = "|")))
 
+  # Older versions of the concepts files may not have the additional filter variables.
+  # Adding them here.
+  if (!"additional_filter_variable_name" %in% colnames(concepts)){
+    concepts <- concepts %>%
+      mutate(additional_filter_variable_name = NA,
+             additional_filter_value = NA)
+  }
+
+  # Making sure each short name only has additional filter variable.
+  if(concepts %>%
+     group_by(short_name) %>%
+     summarise(n = n_distinct(additional_filter_variable_name)) %>%
+     filter(n > 1) %>%
+     nrow() > 0) {
+    stop("There is more than one `additional_filter_variable_name` per `short_name`. Please fix this.")
+  }
+
   # This collapsed list is required for the main sql query.
   all_required_variables <- concepts %>%
     filter(table %in% c("Measurement", "Observation", "Condition",
