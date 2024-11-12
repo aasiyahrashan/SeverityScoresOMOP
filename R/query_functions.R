@@ -40,9 +40,9 @@ window_query <- function(window_start_point, time_variable, date_variable, caden
   ifelse(
     window_start_point == "calendar_date",
     # Returns one row per day based on calendar date rather than admission time.
-    glue(" DATEDIFF(dd, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable}))"),
+    glue(" DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable}))"),
     # Uses admission date as starting point, returns rows based on cadence argument.
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE({time_variable}, {date_variable})) / ({cadence} * 60))")) %>%
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable})) / ({cadence} * 60))")) %>%
     translate(tolower(dialect))
 }
 
@@ -59,6 +59,7 @@ variables_query <- function(concepts, table_name,
   numeric_concepts <-
     concepts %>%
     filter(table == table_name) %>%
+    filter(omop_variable == "value_as_number") %>%
     #### GCS can sometimes be stored as a concept ID instead
     #### of a number. These need a separate query.
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
@@ -66,12 +67,12 @@ variables_query <- function(concepts, table_name,
     mutate(
       max_query = glue(
         ", MAX(CASE WHEN {concept_id_var_name} = {concept_id}
-                    THEN m.{omop_variable}
+                    THEN t.{omop_variable}
                END) AS max_{short_name}"
       ),
       min_query = glue(
         ", MIN(CASE WHEN {concept_id_var_name} = {concept_id}
-                    THEN m.{omop_variable}
+                    THEN t.{omop_variable}
                END) AS min_{short_name}"
       ),
       unit_query = glue(
@@ -131,6 +132,9 @@ variables_query <- function(concepts, table_name,
          "\n",
          glue_collapse(non_numeric_concepts$count_query, sep = "\n"),
          "\n")
+
+  print(table_name)
+  print(variables_required)
 
   # Return query
   variables_required
@@ -254,7 +258,10 @@ get_score_variables <- function(conn, dialect, schema,
   all_required_variables <- concepts %>%
     filter(table %in% c("Measurement", "Observation", "Condition",
                         "Procedure", "Visit Detail", "Device")) %>%
-    mutate(short_name = glue("count_{short_name}")) %>%
+    mutate(short_name = case_when(omop_variable == "value_as_concept_id" | is.na(omop_variable) ~
+                                    glue("count_{short_name}"),
+                                  omop_variable == "value_as_number" ~
+                                    glue("min_{short_name}, max_{short_name}, unit_{short_name}"))) %>%
     distinct(short_name) %>%
     pull(.) %>%
     toString(.) %>%
@@ -297,8 +304,8 @@ get_score_variables <- function(conn, dialect, schema,
       emergency_admission_concept <- visit_detail_concepts$concept_id
       visit_detail_variables <- glue(
         ",COUNT( CASE
-         WHEN vd.visit_detail_source_concept_id = {emergency_admission_concept}
-         THEN vd.visit_detail_id
+         WHEN t.visit_detail_source_concept_id = {emergency_admission_concept}
+         THEN t.visit_detail_id
      END ) AS count_emergency_admission "
       )
     }
@@ -314,40 +321,40 @@ get_score_variables <- function(conn, dialect, schema,
            last_window        = last_window,
            all_required_variables = all_required_variables,
            window_measurement = window_query(window_start_point,
-                                              "m.measurement_datetime",
-                                              "m.measurement_date", cadence,
+                                              "measurement_datetime",
+                                              "measurement_date", cadence,
                                               dialect),
            window_observation = window_query(window_start_point,
-                                             "o.observation_datetime",
-                                             "o.observation_date", cadence,
+                                             "observation_datetime",
+                                             "observation_date", cadence,
                                              dialect),
            window_condition = window_query(window_start_point,
-                                           "co.condition_start_datetime",
-                                           "co.condition_start_date", cadence,
+                                           "condition_start_datetime",
+                                           "condition_start_date", cadence,
                                            dialect),
            window_procedure = window_query(window_start_point,
-                                           "po.procedure_datetime",
-                                           "po.procedure_date", cadence,
+                                           "procedure_datetime",
+                                           "procedure_date", cadence,
                                            dialect),
            window_device = window_query(window_start_point,
-                                        "de.device_exposure_start_datetime",
-                                        "de.device_exposure_start_date", cadence,
+                                        "device_exposure_start_datetime",
+                                        "device_exposure_start_date", cadence,
                                         dialect),
            measurement_variables = variables_query(concepts, "Measurement",
-                                                  "m.measurement_concept_id"),
+                                                  "measurement_concept_id"),
            observation_variables = variables_query(concepts, "Observation",
-                                                  "o.observation_concept_id",
-                                                  "o.value_as_concept_id",
-                                                  table_id_var =  "o.observation_id"),
+                                                  "observation_concept_id",
+                                                  "value_as_concept_id",
+                                                  table_id_var =  "observation_id"),
            condition_variables = variables_query(concepts, "Condition",
-                                                "co.condition_concept_id",
-                                                table_id_var = "co.condition_occurrence_id"),
+                                                "condition_concept_id",
+                                                table_id_var = "condition_occurrence_id"),
            procedure_variables = variables_query(concepts, "Procedure",
-                                                "po.procedure_concept_id",
-                                                table_id_var = "po.procedure_concept_id"),
+                                                "procedure_concept_id",
+                                                table_id_var = "procedure_concept_id"),
            device_variables = variables_query(concepts, "Device",
-                                             "de.device_concept_id",
-                                             table_id_var = "de.device_concept_id"),
+                                             "device_concept_id",
+                                             table_id_var = "device_concept_id"),
            visit_detail_variables = visit_detail_variables)
 
   #### Running the query

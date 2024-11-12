@@ -27,16 +27,16 @@ measurement as (
   	-- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
   	@measurement_variables
   FROM icu_admission_details adm
-  INNER JOIN @schema.measurement m
+  INNER JOIN @schema.measurement t
   	-- making sure the visits match up, and filtering by number of days in ICU
-  	ON adm.person_id = m.person_id
-  	AND adm.visit_occurrence_id = m.visit_occurrence_id
-  	AND (adm.visit_detail_id = m.visit_detail_id OR adm.visit_detail_id IS NULL)
+  	ON adm.person_id = t.person_id
+  	AND adm.visit_occurrence_id = t.visit_occurrence_id
+  	AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
   	AND @window_measurement >= '@first_window'
   	AND @window_measurement < '@last_window'
   -- getting unit of measure for numeric variables.
-  LEFT JOIN @schema.concept c_unit ON m.unit_concept_id = c_unit.concept_id
-  	AND m.unit_concept_id IS NOT NULL
+  LEFT JOIN @schema.concept c_unit ON t.unit_concept_id = c_unit.concept_id
+  	AND t.unit_concept_id IS NOT NULL
   -- want min or max values for each visit each day.
   GROUP BY adm.person_id
   	,adm.visit_occurrence_id
@@ -54,84 +54,84 @@ e.g. COUNT (CASE
             END ) AS comorbid_number
 */
 --- Observation
-observation AS (SELECT o.person_id
-           ,o.visit_occurrence_id
-           ,o.visit_detail_id
+observation AS (SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_observation AS time_in_icu
            @observation_variables
       FROM icu_admission_details adm
-      INNER JOIN @schema.observation o
-      ON adm.person_id = o.person_id
-      AND adm.visit_occurrence_id = o.visit_occurrence_id
-      AND (adm.visit_detail_id = o.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY o.person_id
-           ,o.visit_occurrence_id
-           ,o.visit_detail_id
+      INNER JOIN @schema.observation t
+      ON adm.person_id = t.person_id
+      AND adm.visit_occurrence_id = t.visit_occurrence_id
+      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  GROUP BY t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_observation
     ),
 
-condition AS (SELECT co.person_id
-           ,co.visit_occurrence_id
-           ,co.visit_detail_id
+condition AS (SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_condition AS time_in_icu
            @condition_variables
       FROM icu_admission_details adm
-      INNER JOIN @schema.condition_occurrence co
-      ON adm.person_id = co.person_id
-      AND adm.visit_occurrence_id = co.visit_occurrence_id
-      AND (adm.visit_detail_id = co.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY co.person_id
-           ,co.visit_occurrence_id
-           ,co.visit_detail_id
+      INNER JOIN @schema.condition_occurrence t
+      ON adm.person_id = t.person_id
+      AND adm.visit_occurrence_id = t.visit_occurrence_id
+      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  GROUP BY t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_condition
     ),
 
-procedure AS (SELECT po.person_id
-           ,po.visit_occurrence_id
-           ,po.visit_detail_id
+procedure AS (SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_procedure AS time_in_icu
            @procedure_variables
       FROM icu_admission_details adm
-      INNER JOIN @schema.procedure_occurrence po
-      ON adm.person_id = po.person_id
-      AND adm.visit_occurrence_id = po.visit_occurrence_id
-      AND (adm.visit_detail_id = po.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY po.person_id
-           ,po.visit_occurrence_id
-           ,po.visit_detail_id
+      INNER JOIN @schema.procedure_occurrence t
+      ON adm.person_id = t.person_id
+      AND adm.visit_occurrence_id = t.visit_occurrence_id
+      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  GROUP BY t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_procedure
     ),
 
-device AS (SELECT de.person_id
-           ,de.visit_occurrence_id
-           ,de.visit_detail_id
+device AS (SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_device AS time_in_icu
            @device_variables
       FROM icu_admission_details adm
-      INNER JOIN @schema.device_exposure de
-      ON adm.person_id = de.person_id
-      AND adm.visit_occurrence_id = de.visit_occurrence_id
-      AND (adm.visit_detail_id = de.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY de.person_id
-           ,de.visit_occurrence_id
-           ,de.visit_detail_id
+      INNER JOIN @schema.device_exposure t
+      ON adm.person_id = t.person_id
+      AND adm.visit_occurrence_id = t.visit_occurrence_id
+      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  GROUP BY t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            ,@window_device
     ),
 
-visit_detail_emergency_admission AS (SELECT vd.person_id
-           ,vd.visit_occurrence_id
-           ,vd.visit_detail_id
+visit_detail_emergency_admission AS (SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
            --- has to be 0 since ICU admission datetime is derived from the same variables.
            ,0 AS time_in_icu
            @visit_detail_variables
       FROM icu_admission_details adm
-      INNER JOIN @schema.visit_detail vd
-      ON adm.person_id = vd.person_id
-      AND adm.visit_occurrence_id = vd.visit_occurrence_id
-      AND (adm.visit_detail_id = vd.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY vd.person_id
-           ,vd.visit_occurrence_id
-           ,vd.visit_detail_id
+      INNER JOIN @schema.visit_detail t
+      ON adm.person_id = t.person_id
+      AND adm.visit_occurrence_id = t.visit_occurrence_id
+      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  GROUP BY t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
     )
 
 SELECT adm.*
