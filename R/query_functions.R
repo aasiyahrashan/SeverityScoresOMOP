@@ -290,12 +290,12 @@ get_score_variables <- function(conn, dialect, schema,
       filter(table == "Visit Detail" & short_name == "emergency_admission")
 
     # Initialize count query strings
-    visit_detail_variables_required = ""
+    visit_detail_variables = ""
 
     # Emergency admissions from the visit detail table
     if (nrow(visit_detail_concepts) > 0) {
       emergency_admission_concept <- visit_detail_concepts$concept_id
-      visit_detail_variables_required <- glue(
+      visit_detail_variables <- glue(
         ",COUNT( CASE
          WHEN vd.visit_detail_source_concept_id = {emergency_admission_concept}
          THEN vd.visit_detail_id
