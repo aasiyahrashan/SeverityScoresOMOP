@@ -21,7 +21,9 @@ AS (
 
 --- Measurement
 measurement as (
-  	SELECT adm.*
+  	SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
   	, @window_measurement as time_in_icu
   	--- List of concept IDs to get the min/max of, along with names to assign them to.
   	-- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
@@ -38,10 +40,9 @@ measurement as (
   LEFT JOIN @schema.concept c_unit ON t.unit_concept_id = c_unit.concept_id
   	AND t.unit_concept_id IS NOT NULL
   -- want min or max values for each visit each day.
-  GROUP BY adm.person_id
-  	,adm.visit_occurrence_id
-  	,adm.visit_detail_id
-  	,adm.icu_admission_datetime
+  GROUP BY t.person_id
+  	,t.visit_occurrence_id
+  	,t.visit_detail_id
   	,@window_measurement
 	),
 

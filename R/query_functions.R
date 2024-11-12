@@ -362,7 +362,7 @@ get_score_variables <- function(conn, dialect, schema,
 
   ### Don't like joining here, but not much choice.
   if (nrow(gcs_concepts > 0)) {
-    data <- full_join(data,
+    data <- left_join(data,
                       gcs_data,
                       by = c("person_id",
                              "visit_occurrence_id",
