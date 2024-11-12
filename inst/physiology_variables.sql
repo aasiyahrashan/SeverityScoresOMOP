@@ -150,6 +150,7 @@ LEFT JOIN observation o
         ON adm.person_id           = o.person_id
        AND adm.visit_occurrence_id = o.visit_occurrence_id
        AND (adm.visit_detail_id = o.visit_detail_id OR adm.visit_detail_id IS NULL)
+       AND m.time_in_icu = o.time_in_icu
        AND o.time_in_icu >= '@first_window'
 			 AND o.time_in_icu < '@last_window'
 LEFT JOIN condition co

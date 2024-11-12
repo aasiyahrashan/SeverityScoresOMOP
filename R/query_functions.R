@@ -133,9 +133,6 @@ variables_query <- function(concepts, table_name,
          glue_collapse(non_numeric_concepts$count_query, sep = "\n"),
          "\n")
 
-  print(table_name)
-  print(variables_required)
-
   # Return query
   variables_required
 }
