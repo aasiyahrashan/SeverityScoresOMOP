@@ -64,19 +64,43 @@ variables_query <- function(concepts, table_name,
     #### of a number. These need a separate query.
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
                omop_variable == "value_as_concept_id")) %>%
+    # It's possible for multiple concept IDs to represent the same variable, so grouping here.
+    group_by(short_name, omop_variable, additional_filter_variable_name) %>%
+    summarise(
+      # This is slightly odd, but just makes sure we don't duplicate concept
+      # IDs in cases where we're selecting specific values
+      # The query returns the number of rows matching the concept IDs provided.
+      concept_id = ifelse(length(unique(concept_id)) == 1,
+                          as.character(unique(concept_id)),
+                          glue("'",
+                               glue_collapse(unique(concept_id), sep = "', '"),
+                               "'")),
+      additional_filter_value = glue(
+        "'",
+        glue_collapse(additional_filter_value, sep = "', '"),
+        "'"
+      )
+    ) %>%
     mutate(
+      additional_filter_query =
+        if_else(!is.na(additional_filter_variable_name),
+                glue("AND {additional_filter_variable_name}
+              IN ({additional_filter_value})"), ""),
       max_query = glue(
         ", MAX(CASE WHEN {concept_id_var_name} = {concept_id}
-                    THEN t.{omop_variable}
+           {additional_filter_query}
+                    THEN {omop_variable}
                END) AS max_{short_name}"
       ),
       min_query = glue(
         ", MIN(CASE WHEN {concept_id_var_name} = {concept_id}
-                    THEN t.{omop_variable}
+           {additional_filter_query}
+                    THEN {omop_variable}
                END) AS min_{short_name}"
       ),
       unit_query = glue(
         ", MIN(CASE WHEN {concept_id_var_name} = {concept_id}
+           {additional_filter_query}
                     THEN c_unit.concept_name
                END) AS unit_{short_name}"
       ))
@@ -88,7 +112,7 @@ variables_query <- function(concepts, table_name,
              (omop_variable == "value_as_concept_id" |
                 is.na(omop_variable))) %>%
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
-    group_by(short_name, omop_variable) %>%
+    group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
@@ -102,25 +126,29 @@ variables_query <- function(concepts, table_name,
         "'",
         glue_collapse(concept_id_value, sep = "', '"),
         "'"
+      ),
+      additional_filter_value = glue(
+        "'",
+        glue_collapse(additional_filter_value, sep = "', '"),
+        "'"
       )
     ) %>%
-    # Separate queries depending on whether the concept ID variable is filled.
-    mutate(count_query = case_when(
-      omop_variable == "value_as_concept_id" ~
-        glue(
-          ", COUNT ( CASE WHEN {concept_id_var_name} = {concept_id}
-                        AND {value_as_concept_id_var}
-                        IN ({concept_id_value})
-                        THEN {table_id_var}
-                    END ) AS count_{short_name}"
-        ),
-      is.na(omop_variable) ~
-        glue(
-          ", COUNT ( CASE WHEN {concept_id_var_name} IN ({concept_id})
-                        THEN {table_id_var}
-                    END ) AS count_{short_name}"
-        )
-    ))
+    # Building the query in separate elements, depending on which conditions are filled
+    mutate(
+      value_as_concept_id_query = if_else(
+        omop_variable == "value_as_concept_id",
+        glue("AND {value_as_concept_id_var}
+              IN ({concept_id_value})"), ""),
+      additional_filter_query =
+        if_else(!is.na(additional_filter_variable_name),
+                glue("AND {additional_filter_variable_name}
+              IN ({additional_filter_value})"), ""),
+      count_query = glue(
+        ", COUNT ( CASE WHEN {concept_id_var_name} = {concept_id}
+           {value_as_concept_id_query}
+           {additional_filter_query}
+           THEN {table_id_var}
+           END ) AS count_{short_name}"))
 
   # Collapsing the queries into strings.
   variables_required <-
