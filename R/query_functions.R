@@ -129,7 +129,7 @@ variables_query <- function(concepts, table_name,
          "\n",
          glue_collapse(numeric_concepts$unit_query, sep = "\n"),
          "\n",
-         glue_collapse(observation_concepts$count_query, sep = "\n"),
+         glue_collapse(non_numeric_concepts$count_query, sep = "\n"),
          "\n")
 
   # Return query

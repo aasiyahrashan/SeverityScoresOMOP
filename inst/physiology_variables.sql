@@ -25,7 +25,7 @@ measurement as (
   	, @window_measurement as time_in_icu
   	--- List of concept IDs to get the min/max of, along with names to assign them to.
   	-- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
-  	@measurement_variables_required
+  	@measurement_variables
   FROM icu_admission_details adm
   INNER JOIN @schema.measurement m
   	-- making sure the visits match up, and filtering by number of days in ICU
@@ -58,7 +58,7 @@ observation AS (SELECT o.person_id
            ,o.visit_occurrence_id
            ,o.visit_detail_id
            ,@window_observation AS time_in_icu
-           @observation_variables_required
+           @observation_variables
       FROM icu_admission_details adm
       INNER JOIN @schema.observation o
       ON adm.person_id = o.person_id
@@ -74,7 +74,7 @@ condition AS (SELECT co.person_id
            ,co.visit_occurrence_id
            ,co.visit_detail_id
            ,@window_condition AS time_in_icu
-           @condition_variables_required
+           @condition_variables
       FROM icu_admission_details adm
       INNER JOIN @schema.condition_occurrence co
       ON adm.person_id = co.person_id
@@ -90,7 +90,7 @@ procedure AS (SELECT po.person_id
            ,po.visit_occurrence_id
            ,po.visit_detail_id
            ,@window_procedure AS time_in_icu
-           @procedure_variables_required
+           @procedure_variables
       FROM icu_admission_details adm
       INNER JOIN @schema.procedure_occurrence po
       ON adm.person_id = po.person_id
@@ -106,7 +106,7 @@ device AS (SELECT de.person_id
            ,de.visit_occurrence_id
            ,de.visit_detail_id
            ,@window_device AS time_in_icu
-           @device_variables_required
+           @device_variables
       FROM icu_admission_details adm
       INNER JOIN @schema.device_exposure de
       ON adm.person_id = de.person_id
@@ -123,7 +123,7 @@ visit_detail_emergency_admission AS (SELECT vd.person_id
            ,vd.visit_detail_id
            --- has to be 0 since ICU admission datetime is derived from the same variables.
            ,0 AS time_in_icu
-           @visit_detail_variables_required
+           @visit_detail_variables
       FROM icu_admission_details adm
       INNER JOIN @schema.visit_detail vd
       ON adm.person_id = vd.person_id
