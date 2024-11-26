@@ -112,7 +112,7 @@ fix_sofa_units <- function(data) {
     "per liter", "lakhs/mm3", "per microliter", "cells per microliter",
     NA
   ))) {
-    warning("White cell count contains an unknown unit of measure. Assuming values are in billion per liter")
+    warning("Platelet count contains an unknown unit of measure. Assuming values are in billion per liter")
   }
   data[, unit_platelet := "billion per liter"]
 
