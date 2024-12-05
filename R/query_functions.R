@@ -47,6 +47,24 @@ window_query <- function(window_start_point, time_variable, date_variable, caden
 }
 
 #' Internal function called in `get_score_variables`.
+#' Builds a regex for string searches
+string_search_expression <- function(concepts, table_name) {
+  # This collapsed list is used for string queries
+  string_search_expression <-
+    concepts %>%
+    filter(table == table_name &
+             omop_variable == "concept_name") %>%
+    # It's possible for strings to represent the same variable, so grouping here.
+    group_by(short_name) %>%
+    summarise(
+      concept_id = glue("'%",
+                        glue_collapse(tolower(unique(concept_id)),
+                                      sep = "%|%"),
+                        "%'")) %>%
+    pull(concept_id)
+  string_search_expression
+}
+#' Internal function called in `get_score_variables`.
 #' Builds the 'variable required' query for each table
 variables_query <- function(concepts, table_name,
                                      concept_id_var_name,
@@ -105,7 +123,7 @@ variables_query <- function(concepts, table_name,
                END) AS unit_{short_name}"
       ))
 
-  # Non-numeric variables. Returns counts.
+  # Non-numeric variables if concept ID provided. Returns counts.
   non_numeric_concepts <-
     concepts %>%
     filter(table == table_name &
@@ -117,11 +135,9 @@ variables_query <- function(concepts, table_name,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = ifelse(length(unique(concept_id)) == 1,
-                          as.character(unique(concept_id)),
-                          glue("'",
-                               glue_collapse(unique(concept_id), sep = "', '"),
-                               "'")),
+      concept_id = glue("'",
+                        glue_collapse(unique(concept_id), sep = "', '"),
+                        "'"),
       concept_id_value = glue(
         "'",
         glue_collapse(concept_id_value, sep = "', '"),
@@ -150,6 +166,41 @@ variables_query <- function(concepts, table_name,
            THEN {table_id_var}
            END ) AS count_{short_name}"))
 
+  # Non-numeric variables if no concept ID provided.
+  # Does a string search on concept name.
+  # Returns counts.
+  non_numeric_string_search_concepts <-
+    concepts %>%
+    filter(table == table_name &
+             omop_variable == "concept_name") %>%
+    # It's possible for strings to represent the same variable, so grouping here.
+    group_by(short_name, additional_filter_variable_name) %>%
+    summarise(
+      # This is slightly odd, but just makes sure we don't duplicate concept
+      # IDs in cases where we're selecting specific values
+      # The query returns the number of rows matching the concept IDs provided.
+      concept_id = glue("'%",
+                        glue_collapse(tolower(unique(concept_id)),
+                                      sep = "%|%"),
+                        "%'"),
+      additional_filter_value = glue(
+        "'",
+        glue_collapse(additional_filter_value, sep = "', '"),
+        "'"
+      )
+    ) %>%
+    # Building the query in separate elements, depending on which conditions are filled
+    mutate(
+      additional_filter_query =
+        if_else(!is.na(additional_filter_variable_name),
+                glue("AND {additional_filter_variable_name}
+              IN ({additional_filter_value})"), "", ""),
+      count_query = glue(
+        ", COUNT ( CASE WHEN LOWER({concept_id_var_name}) SIMILAR TO {concept_id})
+           {additional_filter_query}
+           THEN {table_id_var}
+           END ) AS count_{short_name}"))
+
   # Collapsing the queries into strings.
   variables_required <-
     glue(glue_collapse(numeric_concepts$max_query, sep = "\n"),
@@ -159,7 +210,10 @@ variables_query <- function(concepts, table_name,
          glue_collapse(numeric_concepts$unit_query, sep = "\n"),
          "\n",
          glue_collapse(non_numeric_concepts$count_query, sep = "\n"),
-         "\n")
+         "\n",
+         glue_collapse(non_numeric_string_search_concepts$count_query, sep = "\n"),
+         "\n"
+         )
 
   # Return query
   variables_required
@@ -296,14 +350,27 @@ get_score_variables <- function(conn, dialect, schema,
     stop("There is more than one `additional_filter_variable_name` per `short_name`. Please fix this.")
   }
 
+  # Making sure that string search concepts don't have extra filters.
+  if(!concepts %>%
+     filter(omop_variable == "concept_name") %>%
+     pull(concept_id_value) %>%
+     all(is.na(.))) {
+    stop("A line with `omop_variable` set to `concept_name` has concept_id_value filled in.
+         Either delete the value in `concept_id_value`, or change the `omop_variable` to
+         something that contains a concept_id")
+  }
+
   # This collapsed list is required for the main sql query.
   all_required_variables <- concepts %>%
     filter(table %in% c("Measurement", "Observation", "Condition",
-                        "Procedure", "Visit Detail", "Device")) %>%
-    mutate(short_name = case_when(omop_variable == "value_as_concept_id" | is.na(omop_variable) ~
-                                    glue("count_{short_name}"),
-                                  omop_variable == "value_as_number" ~
-                                    glue("min_{short_name}, max_{short_name}, unit_{short_name}"))) %>%
+                        "Procedure", "Visit Detail", "Device", "Drug")) %>%
+    mutate(short_name =
+             case_when(omop_variable == "value_as_concept_id" |
+                         omop_variable == "concept_name" |
+                          is.na(omop_variable) ~
+                          glue("count_{short_name}"),
+                        omop_variable == "value_as_number" ~
+                          glue("min_{short_name}, max_{short_name}, unit_{short_name}"))) %>%
     distinct(short_name) %>%
     pull(.) %>%
     toString(.) %>%
@@ -382,6 +449,14 @@ get_score_variables <- function(conn, dialect, schema,
                                         "device_exposure_start_datetime",
                                         "device_exposure_start_date", cadence,
                                         dialect),
+           window_drug_start = window_query(window_start_point,
+                                            "drug_exposure_start_datetime",
+                                            "drug_exposure_start_date", cadence,
+                                            dialect),
+           window_drug_end = window_query(window_start_point,
+                                          "drug_exposure_end_datetime",
+                                          "drug_exposure_end_date", cadence,
+                                           dialect),
            measurement_variables = variables_query(concepts, "Measurement",
                                                   "measurement_concept_id"),
            observation_variables = variables_query(concepts, "Observation",
@@ -393,11 +468,15 @@ get_score_variables <- function(conn, dialect, schema,
                                                 table_id_var = "condition_occurrence_id"),
            procedure_variables = variables_query(concepts, "Procedure",
                                                 "procedure_concept_id",
-                                                table_id_var = "procedure_concept_id"),
+                                                table_id_var = "procedure_occurrence_id"),
            device_variables = variables_query(concepts, "Device",
                                              "device_concept_id",
-                                             table_id_var = "device_concept_id"),
-           visit_detail_variables = visit_detail_variables)
+                                             table_id_var = "device_exposure_id"),
+           drug_variables = variables_query(concepts, "Drug",
+                                            "concept_name",
+                                            table_id_var = "drug_exposure_id"),
+           visit_detail_variables = visit_detail_variables,
+           drug_string_search_expression = string_search_expression(concepts, "Drug"))
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
