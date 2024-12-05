@@ -119,6 +119,58 @@ device AS (SELECT t.person_id
            ,@window_device
     ),
 
+
+select * from hic_cc_003.drug_exposure de
+left join hic_cc_003.concept c
+on c.concept_id = de.drug_concept_id
+where lower(c.concept_name) LIKE lower('%haloperidol%')
+
+--- Note, this query will double count overlaps.
+--- If a person has two versions of a single drug, with overalapping start and end dates,
+--- the drug will be double counted.
+SELECT
+    t.person_id,
+    t.drug_exposure_start_date,
+    t.drug_exposure_end_date,
+    COUNT(
+        CASE
+            WHEN lower(c.concept_name) like lower('%haloperidol%') THEN t.drug_exposure_id
+        END
+    ) AS count_x,
+    gs AS series_date
+--- Filtering whole table for string matches so don't need to lateral join the whole thing
+FROM (
+    SELECT *
+    FROM hic_cc_003.drug_exposure
+    WHERE lower(c.concept_name) like lower('%haloperidol%')
+) t
+left JOIN lateral
+--- For each row in the table, creating
+generate_series(
+    t.drug_exposure_start_date,
+    t.drug_exposure_end_date,
+    INTERVAL '1 day'
+--- The 'on true' condition just means that every row in the drug table gets joined to
+--- the corresponding time_in_icu rows created by generate_series.
+) AS time_in_icu on TRUE
+GROUP BY t.person_id, time_in_icu;
+
+drug AS (SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
+           ,@window_drug AS time_in_icu
+           @drug
+      FROM icu_admission_details adm
+      INNER JOIN @schema.drug_exposure t
+      ON adm.person_id = t.person_id
+      AND adm.visit_occurrence_id = t.visit_occurrence_id
+      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  GROUP BY t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
+           ,@window_drug
+    ),
+
 visit_detail_emergency_admission AS (SELECT t.person_id
            ,t.visit_occurrence_id
            ,t.visit_detail_id
