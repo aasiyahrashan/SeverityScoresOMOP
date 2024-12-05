@@ -170,7 +170,8 @@ visit_detail_emergency_admission AS (SELECT t.person_id
 
 SELECT adm.*
            ,COALESCE(m.time_in_icu, o.time_in_icu, co.time_in_icu,
-           po.time_in_icu, vd.time_in_icu) AS time_in_icu
+           po.time_in_icu, dev.time_in_icu,
+           drg.time_in_icu, vd.time_in_icu) AS time_in_icu
            @all_required_variables
       FROM icu_admission_details adm
 LEFT JOIN measurement m
@@ -200,13 +201,20 @@ LEFT JOIN procedure po
        AND o.time_in_icu = po.time_in_icu
        AND po.time_in_icu >= '@first_window'
 			 AND po.time_in_icu < '@last_window'
-LEFT JOIN device de
-        ON adm.person_id           = de.person_id
-       AND adm.visit_occurrence_id = de.visit_occurrence_id
-       AND (adm.visit_detail_id = de.visit_detail_id OR adm.visit_detail_id IS NULL)
-       AND o.time_in_icu = de.time_in_icu
-       AND de.time_in_icu >= '@first_window'
-			 AND de.time_in_icu < '@last_window'
+LEFT JOIN device dev
+        ON adm.person_id           = dev.person_id
+       AND adm.visit_occurrence_id = dev.visit_occurrence_id
+       AND (adm.visit_detail_id = dev.visit_detail_id OR adm.visit_detail_id IS NULL)
+       AND o.time_in_icu = dev.time_in_icu
+       AND dev.time_in_icu >= '@first_window'
+			 AND dev.time_in_icu < '@last_window'
+LEFT JOIN drug drg
+        ON adm.person_id           = drg.person_id
+       AND adm.visit_occurrence_id = drg.visit_occurrence_id
+       AND (adm.visit_detail_id = drg.visit_detail_id OR adm.visit_detail_id IS NULL)
+       AND o.time_in_icu = drg.time_in_icu
+       AND drg.time_in_icu >= '@first_window'
+			 AND drg.time_in_icu < '@last_window'
 LEFT JOIN visit_detail_emergency_admission vd
         ON adm.person_id           = vd.person_id
        AND adm.visit_occurrence_id = vd.visit_occurrence_id
@@ -215,4 +223,4 @@ LEFT JOIN visit_detail_emergency_admission vd
        AND vd.time_in_icu >= '@first_window'
 			 AND vd.time_in_icu < '@last_window'
 WHERE COALESCE(m.time_in_icu, o.time_in_icu, co.time_in_icu, po.time_in_icu,
-               de.time_in_icu, vd.time_in_icu) IS NOT NULL
+               dev.time_in_icu, drg.time_in_icu, vd.time_in_icu) IS NOT NULL
