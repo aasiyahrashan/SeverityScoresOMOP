@@ -5,6 +5,8 @@
 #### This package reads in data from OMOP to calculate the APACHE II and SOFA scores. 
 #### It also provides a convenient method of reading in other variables summarised into time windows.
 - Works on databases in the OMOP CDM format version 5.4. 
+- Depends on the OHDSI SqlRender package, https://github.com/OHDSI/SqlRender, which can have quite limited translations between SQL dialects.
+- I've only used this package with SQLServer and PostgreSQL. Most of the code was tested on Postgres only.
 - Copy the `inst/example_concepts.csv` file. 
 - Save it under the name `your_dataset_name_concepts.csv`. 
 - The file needs to be contain OMOP concept IDs which match the `short_names`. Don't edit the short names, since they're used in the code.

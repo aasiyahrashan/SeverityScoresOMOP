@@ -429,7 +429,7 @@ get_score_variables <- function(conn, dialect, schema,
   raw_sql <- read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
     translate(tolower(dialect)) %>%
-    render(schema              = schema,
+    render(schema             = schema,
            start_date         = start_date,
            end_date           = end_date,
            first_window       = first_window,

@@ -141,14 +141,14 @@ drug as (
           ON c.concept_id = t.drug_concept_id
           WHERE LOWER(c.concept_name) similar to LOWER(@drug_string_search_expression)
       ) t
-      LEFT JOIN LATERAL
+    OUTER APPLY (
       --- For each row in the table, creating
       generate_series(
           @window_drug_start
           ,@window_drug_end
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
-      ) AS time_in_icu on TRUE
+      ) AS time_in_icu
       GROUP BY t.person_id, time_in_icu
 ),
 
