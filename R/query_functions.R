@@ -62,6 +62,9 @@ string_search_expression <- function(concepts, table_name) {
                                       sep = "%|%"),
                         "%'")) %>%
     pull(concept_id)
+
+  string_search_expression <- ifelse(!is.na(string_search_expression),
+                                     string_search_expression, '')
   string_search_expression
 }
 #' Internal function called in `get_score_variables`.
@@ -393,7 +396,10 @@ get_score_variables <- function(conn, dialect, schema,
              end_date = end_date,
              first_window = first_window,
              last_window = last_window,
-             window_measurement = window_measurement)
+             window_measurement = window_query(window_start_point,
+                                               "measurement_datetime",
+                                               "measurement_date", cadence,
+                                               dialect))
 
     # Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)

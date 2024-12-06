@@ -134,22 +134,22 @@ drug as (
           SELECT *
           FROM icu_admission_details adm
           INNER JOIN @schema.drug_exposure t
-          INNER JOIN @schema.concept c
           ON adm.person_id = t.person_id
           AND adm.visit_occurrence_id = t.visit_occurrence_id
           AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-          ON c.concept_id = de.drug_concept_id
-          WHERE lower(c.concept_name) similar to lower(@drug_string_search_expression)
+          INNER JOIN @schema.concept c
+          ON c.concept_id = t.drug_concept_id
+          WHERE LOWER(c.concept_name) similar to LOWER(@drug_string_search_expression)
       ) t
       LEFT JOIN LATERAL
       --- For each row in the table, creating
       generate_series(
           @window_drug_start
-          @window_drug_end
+          ,@window_drug_end
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS time_in_icu on TRUE
-      GROUP BY t.person_id, time_in_icu;
+      GROUP BY t.person_id, time_in_icu
 ),
 
 visit_detail_emergency_admission AS (SELECT t.person_id

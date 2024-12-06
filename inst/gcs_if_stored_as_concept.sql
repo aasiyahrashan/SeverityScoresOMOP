@@ -32,29 +32,29 @@ AS (
 		,adm.visit_occurrence_id
 		,adm.visit_detail_id
 		,@window_measurement AS time_in_icu
-		,COALESCE(m.measurement_datetime, m.measurement_date) AS measurement_datetime
+		,COALESCE(t.measurement_datetime, t.measurement_date) AS measurement_datetime
 		--- The max here is just a method of getting the output into wide format.
 		-- There shouldn't be more than one measurement at exactly the same time.
 		,MAX(CASE
-				WHEN m.measurement_concept_id = '3016335'
-					THEN m.value_as_concept_id
+				WHEN t.measurement_concept_id = '3016335'
+					THEN t.value_as_concept_id
 				END) gcs_eye
 		,MAX(CASE
-				WHEN m.measurement_concept_id = '3008223'
-					THEN m.value_as_concept_id
+				WHEN t.measurement_concept_id = '3008223'
+					THEN t.value_as_concept_id
 				END) gcs_motor
 		,MAX(CASE
-				WHEN m.measurement_concept_id = '3009094'
-					THEN m.value_as_concept_id
+				WHEN t.measurement_concept_id = '3009094'
+					THEN t.value_as_concept_id
 				END) gcs_verbal
 	FROM icu_admission_details adm
-	INNER JOIN @schema.measurement m
+	INNER JOIN @schema.measurement t
 		-- making sure the visits match up, and filtering by number of days in ICU
-		ON adm.person_id = m.person_id
-			AND adm.visit_occurrence_id = m.visit_occurrence_id
-			AND (adm.visit_detail_id = m.visit_detail_id OR adm.visit_detail_id IS NULL)
-			AND @window_measurement >= '@min_day'
-			AND @window_measurement < '@max_day'
+		ON adm.person_id = t.person_id
+			AND adm.visit_occurrence_id = t.visit_occurrence_id
+			AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+			AND @window_measurement >= '@first_window'
+			AND @window_measurement < '@last_window'
 	--- Making sure we get gcs values only. The variables become null otherwise.
 	WHERE value_as_concept_id IS NOT NULL
 		AND measurement_concept_id IN ('3016335', '3008223', '3009094')
@@ -64,7 +64,7 @@ AS (
 		,adm.visit_detail_id
 		,adm.icu_admission_datetime
 		,@window_measurement
-		,COALESCE(m.measurement_datetime, m.measurement_date)
+		,COALESCE(t.measurement_datetime, t.measurement_date)
 
 	),
 
