@@ -92,9 +92,9 @@ string_search_expression <- function(concepts, table_name) {
     # It's possible for strings to represent the same variable, so grouping here.
     group_by(short_name) %>%
     summarise(
-      concept_id = glue("'%",
+      concept_id = glue("LOWER({concept_id_var_name}) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%|%"),
+                                      sep = "%' OR LOWER({concept_id_var_name}) LIKE '%"),
                         "%'")) %>%
     pull(concept_id)
 
@@ -102,6 +102,7 @@ string_search_expression <- function(concepts, table_name) {
                                      string_search_expression, '')
   string_search_expression
 }
+
 #' Internal function called in `get_score_variables`.
 #' Builds the 'variable required' query for each table
 variables_query <- function(concepts, table_name,
@@ -217,9 +218,9 @@ variables_query <- function(concepts, table_name,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue("'%",
+      concept_id = glue("LOWER({concept_id_var_name}) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%|%"),
+                                      sep = "%' OR LOWER({concept_id_var_name}) LIKE '%"),
                         "%'"),
       additional_filter_value = glue(
         "'",
@@ -234,7 +235,7 @@ variables_query <- function(concepts, table_name,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN LOWER({concept_id_var_name}) SIMILAR TO {concept_id})
+        ", COUNT ( CASE WHEN {concept_id})
            {additional_filter_query}
            THEN {table_id_var}
            END ) AS count_{short_name}"))
@@ -257,6 +258,8 @@ variables_query <- function(concepts, table_name,
   variables_required
 }
 
+#' Internal function called in `get_score_variables`.
+#' Translates left lateral join between postgres and sql server.
 translate_drug_join <- function(dialect){
 
   # This translates the join for the drug table.

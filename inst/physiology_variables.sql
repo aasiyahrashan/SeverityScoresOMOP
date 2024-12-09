@@ -139,7 +139,7 @@ drug as (
           AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
           INNER JOIN @schema.concept c
           ON c.concept_id = t.drug_concept_id
-          WHERE LOWER(c.concept_name) similar to LOWER(@drug_string_search_expression)
+          WHERE @drug_string_search_expression
       ) t
       @drug_join
       GROUP BY t.person_id, time_in_icu
