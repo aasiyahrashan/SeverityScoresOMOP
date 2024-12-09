@@ -256,3 +256,35 @@ variables_query <- function(concepts, table_name,
   # Return query
   variables_required
 }
+
+translate_drug_join <- function(dialect){
+
+  # This translates the join for the drug table.
+  # This needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
+
+  if (dialect == "postgresql"){
+    drug_join <-
+    "LEFT JOIN LATERAL
+      --- For each row in the table, creating
+      generate_series(
+          @window_drug_start
+          ,@window_drug_end
+      --- The 'on true' condition just means that every row in the drug table gets joined to
+      --- the corresponding time_in_icu rows created by generate_series.
+      ) AS time_in_icu on TRUE"
+  }
+
+  if (dialect == "sql server"){
+    drug_join <-
+    "OUTER APPLY
+      --- For each row in the table, creating
+      generate_series(
+          @window_drug_start
+          ,@window_drug_end
+      --- Every row in the drug table gets joined to
+      --- the corresponding time_in_icu rows created by generate_series.
+      ) AS time_in_icu"
+
+  }
+  drug_join
+}
