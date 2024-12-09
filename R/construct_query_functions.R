@@ -105,7 +105,6 @@ string_search_expression <- function(concepts, table_name) {
   # If no concepts, I want no row returned. So I make the condition say 'where false'.
   string_search_expression <- ifelse(nrow(concepts) != 0,
                                      string_search_expression, "false")
-  print(string_search_expression)
   string_search_expression
 }
 
@@ -133,11 +132,7 @@ variables_query <- function(concepts, table_name,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = ifelse(length(unique(concept_id)) == 1,
-                          as.character(unique(concept_id)),
-                          glue("'",
-                               glue_collapse(unique(concept_id), sep = "', '"),
-                               "'")),
+      concept_id = glue_collapse(unique(concept_id), sep = ", "),
       additional_filter_value = glue(
         "'",
         glue_collapse(additional_filter_value, sep = "', '"),
@@ -304,6 +299,5 @@ translate_drug_join <- function(dialect,
       ) AS time_in_icu")
 
   }
-  print(drug_join)
   drug_join
 }

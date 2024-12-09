@@ -82,7 +82,8 @@ get_score_variables <- function(conn, dialect, schema,
   # Getting the list of concept IDs required and creating SQL queries from them.
   concepts <- read_delim(file = concepts_file_path) %>%
     # Filtering for the scores required.
-    filter(str_detect(score, paste(severity_score, collapse = "|")))
+    filter(str_detect(score, paste(severity_score, collapse = "|"))) %>%
+    mutate(concept_id = as.character(concept_id))
 
   # Older versions of the concepts files may not have the additional filter variables.
   # Adding them here.
@@ -220,6 +221,8 @@ get_score_variables <- function(conn, dialect, schema,
            visit_detail_variables = visit_detail_variables,
            drug_string_search_expression = string_search_expression(concepts, "Drug")) %>%
     translate(tolower(dialect))
+
+  print(raw_sql)
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
