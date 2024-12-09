@@ -124,28 +124,29 @@ drug as (
       --- If a person has two versions of a single drug, with overalapping start and end dates,
       --- the drug will be double counted.
       SELECT
-          t.person_id
-          ,t.visit_occurrence_id
-          ,t.visit_detail_id
-          ,time_in_icu
+          time_in_icu.person_id
+          ,time_in_icu.visit_occurrence_id
+          ,time_in_icu.visit_detail_id
+          ,time_in_icu.time_in_icu
           @drug_variables
       --- Filtering whole table for string matches so don't need to lateral join the whole thing
       FROM (
           SELECT *
           FROM icu_admission_details adm
-          INNER JOIN @schema.drug_exposure t
-          ON adm.person_id = t.person_id
-          AND adm.visit_occurrence_id = t.visit_occurrence_id
-          AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+          INNER JOIN @schema.drug_exposure drg
+          ON adm.person_id = drg.person_id
+          AND adm.visit_occurrence_id = drg.visit_occurrence_id
+          AND (adm.visit_detail_id = drg.visit_detail_id OR adm.visit_detail_id IS NULL)
           INNER JOIN @schema.concept c
-          ON c.concept_id = t.drug_concept_id
+          ON c.concept_id = drg.drug_concept_id
           WHERE @drug_string_search_expression
       ) t
       @drug_join
-      GROUP BY t.person_id
-      ,t.visit_occurrence_id
-      ,t.visit_detail_id
-      ,time_in_icu
+      GROUP BY
+      time_in_icu.person_id
+      ,time_in_icu.visit_occurrence_id
+      ,time_in_icu.visit_detail_id
+      ,time_in_icu.time_in_icu
 ),
 
 visit_detail_emergency_admission AS (SELECT t.person_id
