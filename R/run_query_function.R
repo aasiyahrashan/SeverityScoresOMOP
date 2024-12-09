@@ -76,7 +76,6 @@ get_score_variables <- function(conn, dialect, schema,
            start_date         = start_date,
            end_date           = end_date) %>%
     translate(tolower(dialect))
-
   adm_details <- dbGetQuery(conn, raw_sql)
 
   # Getting the list of concept IDs required and creating SQL queries from them.
@@ -176,10 +175,7 @@ get_score_variables <- function(conn, dialect, schema,
   # Importing the physiology data query and substituting variables
   raw_sql <- read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
-
     render(schema             = schema,
-           start_date         = start_date,
-           end_date           = end_date,
            first_window       = first_window,
            last_window        = last_window,
            all_required_variables = all_required_variables,
@@ -220,9 +216,13 @@ get_score_variables <- function(conn, dialect, schema,
                                             table_id_var = "drug_exposure_id"),
            visit_detail_variables = visit_detail_variables,
            drug_string_search_expression = string_search_expression(concepts, "Drug")) %>%
-    translate(tolower(dialect))
+    translate(tolower(dialect)) %>%
+    render(start_date         = start_date,
+           end_date           = end_date,)
 
-  print(raw_sql)
+  # I really don't understand this, but sqlrender translates the start_date value for
+  # this query only, with an extra, incorrect cast. Replacing the parameter with the value
+  # later to prevent this.
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
