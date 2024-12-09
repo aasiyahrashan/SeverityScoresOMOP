@@ -96,9 +96,9 @@ string_search_expression <- function(concepts, table_name) {
     # It's possible for strings to represent the same variable, so grouping here.
     group_by(short_name) %>%
     summarise(
-      concept_id = glue("LOWER(c.{omop_variable}) LIKE '%",
+      concept_id = glue("LOWER(t_w.{omop_variable}) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER(c.{omop_variable}) LIKE '%"),
+                                      sep = "%' OR LOWER(t_w.{omop_variable}) LIKE '%"),
                         "%'")) %>%
     pull(concept_id)
 
@@ -271,8 +271,8 @@ translate_drug_join <- function(dialect){
     "LEFT JOIN LATERAL
       --- For each row in the table, creating
       generate_series(
-       window_drug_start
-      ,window_drug_end
+       t_w.drug_start
+      ,t_w.drug_end
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS time_in_icu on TRUE")
@@ -283,8 +283,8 @@ translate_drug_join <- function(dialect){
     "OUTER APPLY
       --- For each row in the table, creating
       generate_series(
-      window_drug_start
-      , window_drug_end
+      t_w.drug_start
+      , t_w.drug_end
       --- Every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS time_in_icu")

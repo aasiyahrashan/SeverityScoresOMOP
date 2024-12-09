@@ -132,13 +132,13 @@ drug as (
       --- Filtering whole table for string matches so don't need to lateral join the whole thing
       FROM (
           SELECT
-          adm.person_id,
+          adm.person_id
           ,adm.visit_occurrence_id
           ,adm.visit_detail_id
           ,t.drug_exposure_id
           ,c.concept_name
-          ,@window_drug_start as window_drug_start
-          ,@window_drug_end as window_drug_start
+          ,@window_drug_start as drug_start
+          ,@window_drug_end as drug_end
           FROM icu_admission_details adm
           INNER JOIN @schema.drug_exposure t
           ON adm.person_id = t.person_id
