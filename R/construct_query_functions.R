@@ -272,6 +272,11 @@ translate_drug_join <- function(dialect,
                                  "drug_exposure_end_datetime",
                                  "drug_exposure_end_date", cadence)
 
+  # The table alias adm needs to be replaced with t for this query
+  # , since the adm join happens earlier
+  window_drug_start <- gsub("adm\\.", "t.", window_drug_start)
+  window_drug_end <- gsub("adm\\.", "t.", window_drug_end)
+
   # This translates the join for the drug table.
   # This needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
 
