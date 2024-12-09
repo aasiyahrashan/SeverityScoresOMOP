@@ -65,7 +65,7 @@ window_query <- function(window_start_point, time_variable,
 
 #' Internal function called in `get_score_variables`.
 #' Builds the age query
-age_query <- function(age_query, dialect) {
+age_query <- function(age_method, dialect) {
 
   if (!(age_method %in% c("dob", "year_only"))) {
     stop("Error: age_method must be either 'dob' or 'year_only'")

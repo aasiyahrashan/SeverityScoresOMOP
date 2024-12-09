@@ -71,11 +71,11 @@ get_score_variables <- function(conn, dialect, schema,
   # Admission information
   raw_sql <- read_file(
     system.file("admission_details.sql", package = "SeverityScoresOMOP")) %>%
-    translate(tolower(dialect)) %>%
     render(schema             = schema,
            age_query          = age_query,
            start_date         = start_date,
-           end_date           = end_date)
+           end_date           = end_date) %>%
+    translate(tolower(dialect))
 
   adm_details <- dbGetQuery(conn, raw_sql)
 
@@ -138,7 +138,6 @@ get_score_variables <- function(conn, dialect, schema,
     raw_sql <-
       read_file(system.file("gcs_if_stored_as_concept.sql",
                             package = "SeverityScoresOMOP")) %>%
-      translate(tolower(dialect)) %>%
       render(schema = schema,
              start_date = start_date,
              end_date = end_date,
@@ -146,7 +145,8 @@ get_score_variables <- function(conn, dialect, schema,
              last_window = last_window,
              window_measurement = window_query(window_start_point,
                                                "measurement_datetime",
-                                               "measurement_date", cadence))
+                                               "measurement_date", cadence)) %>%
+      translate(tolower(dialect))
 
     # Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
