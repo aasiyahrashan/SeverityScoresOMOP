@@ -84,22 +84,28 @@ age_query <- function(age_method, dialect) {
 #' Internal function called in `get_score_variables`.
 #' Builds a regex for string searches
 string_search_expression <- function(concepts, table_name) {
+
+  # Finding variables which need string matches
+  concepts <- concepts %>%
+    filter(table == table_name &
+             omop_variable == "concept_name")
+
   # This collapsed list is used for string queries
   string_search_expression <-
     concepts %>%
-    filter(table == table_name &
-             omop_variable == "concept_name") %>%
     # It's possible for strings to represent the same variable, so grouping here.
     group_by(short_name) %>%
     summarise(
-      concept_id = glue("LOWER({concept_id_var_name}) LIKE '%",
+      concept_id = glue("LOWER(c.{omop_variable}) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER({concept_id_var_name}) LIKE '%"),
+                                      sep = "%' OR LOWER(c.{omop_variable}) LIKE '%"),
                         "%'")) %>%
     pull(concept_id)
 
-  string_search_expression <- ifelse(!is.na(string_search_expression),
-                                     string_search_expression, '')
+  # If no concepts, I want no row returned. So I make the condition say 'where false'.
+  string_search_expression <- ifelse(nrow(concepts) != 0,
+                                     string_search_expression, "false")
+  print(string_search_expression)
   string_search_expression
 }
 
@@ -260,34 +266,44 @@ variables_query <- function(concepts, table_name,
 
 #' Internal function called in `get_score_variables`.
 #' Translates left lateral join between postgres and sql server.
-translate_drug_join <- function(dialect){
+translate_drug_join <- function(dialect,
+                                window_start_point, cadence){
+
+  # First getting the correct window query
+  window_drug_start <- window_query(window_start_point,
+                                   "drug_exposure_start_datetime",
+                                   "drug_exposure_start_date", cadence)
+  window_drug_end <- window_query(window_start_point,
+                                 "drug_exposure_end_datetime",
+                                 "drug_exposure_end_date", cadence)
 
   # This translates the join for the drug table.
   # This needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
 
   if (dialect == "postgresql"){
-    drug_join <-
+    drug_join <- glue(
     "LEFT JOIN LATERAL
       --- For each row in the table, creating
       generate_series(
-          @window_drug_start
-          ,@window_drug_end
+       {window_drug_start}
+      ,{window_drug_end}
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
-      ) AS time_in_icu on TRUE"
+      ) AS time_in_icu on TRUE")
   }
 
   if (dialect == "sql server"){
-    drug_join <-
+    drug_join <- glue(
     "OUTER APPLY
       --- For each row in the table, creating
       generate_series(
-          @window_drug_start
-          ,@window_drug_end
+          {window_drug_start}
+          ,{window_drug_end}
       --- Every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
-      ) AS time_in_icu"
+      ) AS time_in_icu")
 
   }
+  print(drug_join)
   drug_join
 }

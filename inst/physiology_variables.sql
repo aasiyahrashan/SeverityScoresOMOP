@@ -142,7 +142,10 @@ drug as (
           WHERE @drug_string_search_expression
       ) t
       @drug_join
-      GROUP BY t.person_id, time_in_icu
+      GROUP BY t.person_id
+      ,t.visit_occurrence_id
+      ,t.visit_detail_id
+      ,time_in_icu
 ),
 
 visit_detail_emergency_admission AS (SELECT t.person_id
