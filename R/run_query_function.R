@@ -146,8 +146,7 @@ get_score_variables <- function(conn, dialect, schema,
              last_window = last_window,
              window_measurement = window_query(window_start_point,
                                                "measurement_datetime",
-                                               "measurement_date", cadence,
-                                               dialect))
+                                               "measurement_date", cadence))
 
     # Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
@@ -176,7 +175,7 @@ get_score_variables <- function(conn, dialect, schema,
   # Importing the physiology data query and substituting variables
   raw_sql <- read_file(
     system.file("physiology_variables.sql", package = "SeverityScoresOMOP")) %>%
-    translate(tolower(dialect)) %>%
+
     render(schema             = schema,
            start_date         = start_date,
            end_date           = end_date,
@@ -185,32 +184,25 @@ get_score_variables <- function(conn, dialect, schema,
            all_required_variables = all_required_variables,
            window_measurement = window_query(window_start_point,
                                              "measurement_datetime",
-                                             "measurement_date", cadence,
-                                             dialect),
+                                             "measurement_date", cadence),
            window_observation = window_query(window_start_point,
                                              "observation_datetime",
-                                             "observation_date", cadence,
-                                             dialect),
+                                             "observation_date", cadence),
            window_condition = window_query(window_start_point,
                                            "condition_start_datetime",
-                                           "condition_start_date", cadence,
-                                           dialect),
+                                           "condition_start_date", cadence),
            window_procedure = window_query(window_start_point,
                                            "procedure_datetime",
-                                           "procedure_date", cadence,
-                                           dialect),
+                                           "procedure_date", cadence),
            window_device = window_query(window_start_point,
                                         "device_exposure_start_datetime",
-                                        "device_exposure_start_date", cadence,
-                                        dialect),
+                                        "device_exposure_start_date", cadence),
            window_drug_start = window_query(window_start_point,
                                             "drug_exposure_start_datetime",
-                                            "drug_exposure_start_date", cadence,
-                                            dialect),
+                                            "drug_exposure_start_date", cadence),
            window_drug_end = window_query(window_start_point,
                                           "drug_exposure_end_datetime",
-                                          "drug_exposure_end_date", cadence,
-                                          dialect),
+                                          "drug_exposure_end_date", cadence),
            measurement_variables = variables_query(concepts, "Measurement",
                                                    "measurement_concept_id"),
            observation_variables = variables_query(concepts, "Observation",
@@ -230,7 +222,8 @@ get_score_variables <- function(conn, dialect, schema,
                                             "concept_name",
                                             table_id_var = "drug_exposure_id"),
            visit_detail_variables = visit_detail_variables,
-           drug_string_search_expression = string_search_expression(concepts, "Drug"))
+           drug_string_search_expression = string_search_expression(concepts, "Drug")) %>%
+    translate(tolower(dialect))
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)

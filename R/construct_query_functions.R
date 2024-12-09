@@ -35,8 +35,8 @@ omop_connect <-
 
 #' Internal function called in `get_score_variables`.
 #' Builds the windowing query based on variable names in each table.
-window_query <- function(window_start_point, time_variable, date_variable, cadence,
-                         dialect){
+window_query <- function(window_start_point, time_variable,
+                         date_variable, cadence){
 
   # Checking arguments
 
@@ -60,8 +60,7 @@ window_query <- function(window_start_point, time_variable, date_variable, caden
     # Returns one row per day based on calendar date rather than admission time.
     glue(" DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable}))"),
     # Uses admission date as starting point, returns rows based on cadence argument.
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable})) / ({cadence} * 60))")) %>%
-    translate(tolower(dialect))
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable})) / ({cadence} * 60))"))
 }
 
 #' Internal function called in `get_score_variables`.
@@ -80,8 +79,7 @@ age_query <- function(age_query, dialect) {
 			  COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
         vo.visit_start_datetime, vo.visit_start_date)) as age",
     " YEAR(COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
-                   vo.visit_start_datetime, vo.visit_start_date)) - p.year_of_birth AS age") %>%
-    translate(tolower(dialect))
+                   vo.visit_start_datetime, vo.visit_start_date)) - p.year_of_birth AS age")
 }
 #' Internal function called in `get_score_variables`.
 #' Builds a regex for string searches
