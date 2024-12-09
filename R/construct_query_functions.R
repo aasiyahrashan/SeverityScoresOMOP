@@ -236,7 +236,7 @@ variables_query <- function(concepts, table_name,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN {concept_id})
+        ", COUNT ( CASE WHEN {concept_id}
            {additional_filter_query}
            THEN {table_id_var}
            END ) AS count_{short_name}"))
@@ -261,21 +261,7 @@ variables_query <- function(concepts, table_name,
 
 #' Internal function called in `get_score_variables`.
 #' Translates left lateral join between postgres and sql server.
-translate_drug_join <- function(dialect,
-                                window_start_point, cadence){
-
-  # First getting the correct window query
-  window_drug_start <- window_query(window_start_point,
-                                   "drug_exposure_start_datetime",
-                                   "drug_exposure_start_date", cadence)
-  window_drug_end <- window_query(window_start_point,
-                                 "drug_exposure_end_datetime",
-                                 "drug_exposure_end_date", cadence)
-
-  # The table alias adm needs to be replaced with t for this query
-  # , since the adm join happens earlier
-  window_drug_start <- gsub("adm\\.", "t.", window_drug_start)
-  window_drug_end <- gsub("adm\\.", "t.", window_drug_end)
+translate_drug_join <- function(dialect){
 
   # This translates the join for the drug table.
   # This needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
@@ -285,8 +271,8 @@ translate_drug_join <- function(dialect,
     "LEFT JOIN LATERAL
       --- For each row in the table, creating
       generate_series(
-       {window_drug_start}
-      ,{window_drug_end}
+       window_drug_start
+      ,window_drug_end
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS time_in_icu on TRUE")
@@ -297,8 +283,8 @@ translate_drug_join <- function(dialect,
     "OUTER APPLY
       --- For each row in the table, creating
       generate_series(
-          {window_drug_start}
-          ,{window_drug_end}
+      window_drug_start
+      , window_drug_end
       --- Every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS time_in_icu")
