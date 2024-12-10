@@ -76,8 +76,11 @@ get_score_variables <- function(conn, dialect, schema,
            start_date         = start_date,
            end_date           = end_date) %>%
     translate(tolower(dialect))
-  adm_details <- dbGetQuery(conn, raw_sql)
+  adm_details <- dbGetQuery(conn, raw_sql)t
 
+  # Getting list of all table names
+  variable_names <- read_delim(file = system.file("variable_names.csv",
+                                                  package = "SeverityScoresOMOP"))
   # Getting the list of concept IDs required and creating SQL queries from them.
   concepts <- read_delim(file = concepts_file_path) %>%
     # Filtering for the scores required.

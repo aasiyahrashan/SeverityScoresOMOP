@@ -292,3 +292,17 @@ translate_drug_join <- function(dialect){
   }
   drug_join
 }
+
+units_of_measure_query <- function(table_name){
+  # Only applies to the measurement table
+  if(table_name == "Measurement"){
+    units_of_measure_query <- glue(
+      "
+      -- getting unit of measure for numeric variables.
+       LEFT JOIN @schema.concept c_unit ON t.unit_concept_id = c_unit.concept_id
+  	   AND t.unit_concept_id IS NOT NULL")
+  } else {
+    units_of_measure_query <- ""
+  }
+  units_of_measure_query
+}
