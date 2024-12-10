@@ -192,7 +192,7 @@ get_score_variables <- function(conn, dialect, schema,
     translate(tolower(dialect)) %>%
     render(start_date = start_date,
            end_date = end_date)
-
+  cat(raw_sql)
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
 

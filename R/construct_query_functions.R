@@ -172,15 +172,8 @@ variables_query <- function(concepts,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue(
-        "'",
-        glue_collapse(unique(concept_id), sep = "', '"),
-        "'"),
-      concept_id_value = glue(
-        "'",
-        glue_collapse(concept_id_value, sep = "', '"),
-        "'"
-      ),
+      concept_id = glue_collapse(unique(concept_id), sep = ", "),
+      concept_id_value = glue_collapse(concept_id_value, sep = ", "),
       additional_filter_value = glue(
         "'",
         glue_collapse(additional_filter_value, sep = "', '"),
