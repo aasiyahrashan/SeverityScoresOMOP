@@ -30,43 +30,6 @@ AS (
 
 @all_with_queries
 
-drug as (
-      --- Note, this query will double count overlaps.
-      --- If a person has two versions of a single drug, with overalapping start and end dates,
-      --- the drug will be double counted.
-      SELECT
-          t_w.person_id
-          ,t_w.visit_occurrence_id
-          ,t_w.visit_detail_id
-          ,time_in_icu
-          @drug_variables
-      --- Filtering whole table for string matches so don't need to lateral join the whole thing
-      FROM (
-          SELECT
-          adm.person_id
-          ,adm.visit_occurrence_id
-          ,adm.visit_detail_id
-          ,t.drug_exposure_id
-          ,c.concept_name
-          ,@window_drug_start as drug_start
-          ,@window_drug_end as drug_end
-          FROM icu_admission_details adm
-          INNER JOIN @schema.drug_exposure t
-          ON adm.person_id = t.person_id
-          AND adm.visit_occurrence_id = t.visit_occurrence_id
-          AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-          INNER JOIN @schema.concept c
-          ON c.concept_id = t.drug_concept_id
-          WHERE @drug_string_search_expression
-      ) t_w
-      @drug_join
-      GROUP BY
-      t_w.person_id
-      ,t_w.visit_occurrence_id
-      ,t_w.visit_detail_id
-      ,time_in_icu
-)
-
 SELECT adm.*
            ,COALESCE(@all_time_in_icu) AS time_in_icu
            @all_required_variables

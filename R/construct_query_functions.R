@@ -172,9 +172,10 @@ variables_query <- function(concepts,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue("'",
-                        glue_collapse(unique(concept_id), sep = "', '"),
-                        "'"),
+      concept_id = glue(
+        "'",
+        glue_collapse(unique(concept_id), sep = "', '"),
+        "'"),
       concept_id_value = glue(
         "'",
         glue_collapse(concept_id_value, sep = "', '"),
@@ -215,9 +216,9 @@ variables_query <- function(concepts,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue("LOWER({concept_id_var_name}) LIKE '%",
+      concept_id = glue("LOWER(concept_name) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER({concept_id_var_name}) LIKE '%"),
+                                      sep = "%' OR LOWER(concept_name) LIKE '%"),
                         "%'"),
       additional_filter_value = glue(
         "'",
@@ -290,7 +291,7 @@ translate_drug_join <- function(dialect){
 }
 
 units_of_measure_query <- function(table_name){
-  # Only applies to tables with numbers
+  # Only applies to tables with numeric values
   if(table_name %in% c("Measurement",
                        "Observation")){
     units_of_measure_query <- glue(

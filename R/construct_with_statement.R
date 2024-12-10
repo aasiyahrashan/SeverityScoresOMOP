@@ -57,7 +57,8 @@ with_query <- function(concepts, table_name, variable_names,
 }
 
 drug_with_query <- function(concepts, variable_names,
-                            window_start_point, cadence){
+                            window_start_point, cadence,
+                            dialect){
 
   # The drug table query is completely different because it needs to account for both
   # start and end times.
@@ -87,6 +88,9 @@ drug_with_query <- function(concepts, variable_names,
                                variable_names$concept_id_var,
                                variable_names$id_var)
   string_search_expression = string_search_expression(concepts, "Drug")
+
+  # Drug join
+  drug_join <- translate_drug_join(dialect)
 
   drug_with_query <-
     glue("
@@ -119,7 +123,7 @@ drug_with_query <- function(concepts, variable_names,
           ON c.concept_id = t.drug_concept_id
           WHERE @string_search_expression
       ) t_w
-      @drug_join
+      {drug_join}
       GROUP BY
       t_w.person_id
       ,t_w.visit_occurrence_id

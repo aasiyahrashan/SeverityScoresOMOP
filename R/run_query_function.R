@@ -133,8 +133,13 @@ get_score_variables <- function(conn, dialect, schema,
   # Constructing with query for each table.
   with_queries_per_table <- concepts %>%
     distinct(table) %>%
-    mutate(with_query = with_query(concepts, table, variable_names,
-                                   window_start_point, cadence))
+    mutate(with_query =
+             if_else(table == "Drug",
+                     drug_with_query(concepts, variable_names,
+                                      window_start_point, cadence,
+                                      dialect),
+                     with_query(concepts, table, variable_names,
+                                window_start_point, cadence))
 
   # Constructing end join query for each table.
   with_queries_per_table <- with_queries_per_table %>%
@@ -171,9 +176,6 @@ get_score_variables <- function(conn, dialect, schema,
     translate(tolower(dialect)) %>%
     render(start_date = start_date,
            end_date = end_date)
-
-           drug_join = translate_drug_join(dialect)
-
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
