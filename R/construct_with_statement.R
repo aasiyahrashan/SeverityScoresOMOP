@@ -49,6 +49,9 @@ with_query <- function(concepts, table_name, variable_names,
   	AND {window} >= '@first_window'
   	AND {window} < '@last_window'
     {units_of_measure_query}
+    -- For string searching by concept name if required
+    INNER JOIN @schema.concept c
+    ON c.concept_id = t.drug_concept_id
     GROUP BY t.person_id
   	,t.visit_occurrence_id
   	,t.visit_detail_id
