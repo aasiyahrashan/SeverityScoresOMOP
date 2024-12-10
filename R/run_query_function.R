@@ -154,13 +154,13 @@ get_score_variables <- function(conn, dialect, schema,
     left_join(variable_names %>% select(table, alias),
               by = "table") %>%
     # Pasting all previous aliases together so I can use it in a coalesce for a join.
-    mutate(prev_time_vars = accumulate(glue("{alias}.time_in_icu"),
+    mutate(prev_alias = accumulate(glue("{alias}.placeholder"),
                                        ~ glue("{.x}, {.y}"))) %>%
-    mutate(prev_time_vars = lag(prev_time_vars)) %>%
+    mutate(prev_alias = lag(prev_alias)) %>%
     # end_join_query is not vectorised
     rowwise() %>%
     mutate(end_join_query = end_join_query(table, variable_names,
-                                           prev_time_vars)) %>%
+                                           prev_alias)) %>%
     ungroup()
 
   # Combining each query type into a string
@@ -168,9 +168,6 @@ get_score_variables <- function(conn, dialect, schema,
                                     sep = "\n")
   all_end_join_queries <- glue_collapse(with_queries_per_table$end_join_query,
                                         sep = "\n")
-  all_time_in_icu <- glue_collapse(
-    glue("{with_queries_per_table$alias}.time_in_icu"),
-    sep = ", ")
   # All required variables for the queries
   all_required_variables <- all_required_variables_query(concepts)
 
@@ -182,7 +179,10 @@ get_score_variables <- function(conn, dialect, schema,
       age_query = age_query,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
-      all_time_in_icu = all_time_in_icu,
+      all_time_in_icu = all_id_vars(with_queries_per_table, "time_in_icu"),
+      all_person_id = all_id_vars(with_queries_per_table, "person_id"),
+      all_visit_occurrence_id = all_id_vars(with_queries_per_table, "visit_occurrence_id"),
+      all_visit_detail_id = all_id_vars(with_queries_per_table, "visit_detail_id"),
       all_required_variables = all_required_variables) %>%
     # Don't know why the translate function adds an unnecessary CAST statement to the dates.
     # So not translating that part.

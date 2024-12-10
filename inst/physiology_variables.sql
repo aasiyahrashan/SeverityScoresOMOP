@@ -33,6 +33,11 @@ AS (
 SELECT adm.*
            ,COALESCE(@all_time_in_icu) AS time_in_icu
            @all_required_variables
-      FROM icu_admission_details adm
       @all_end_join_queries
+      -- Admission information needs to be included, even if there are no physiology values
+      RIGHT JOIN icu_admission_details adm
+      ON COALESCE(@all_person_id) = adm.person_id
+      AND COALESCE(@all_visit_occurrence_id) = adm.visit_occurrence_id
+      AND (COALESCE(@all_visit_detail_id) = adm.visit_detail_id
+            OR adm.visit_detail_id IS NULL)
       WHERE COALESCE(@all_time_in_icu) IS NOT NULL

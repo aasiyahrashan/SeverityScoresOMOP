@@ -144,28 +144,38 @@ drug_with_query <- function(concepts, variable_names,
 
   drug_with_query
 }
-end_join_query <- function(table_name, variable_names, prev_time_vars){
+end_join_query <- function(table_name, variable_names, prev_alias){
 
   variable_names <- variable_names %>%
     filter(table == table_name)
 
-  # The first table in the combined join doesn't have a previous time variable to join to.
-  # But all the others have to.
-  if(!is.na(prev_time_vars)) {
-    time_join = glue("AND COALESCE({prev_time_vars}) = {variable_names$alias}.time_in_icu")
-  } else {
-    time_join = ""
-  }
+  # Getting strings for coalesce
+  time_in_icu <- gsub("placeholder", "time_in_icu", prev_alias)
+  person_id <- gsub("placeholder", "person_id", prev_alias)
+  visit_occurrence_id <- gsub("placeholder", "visit_occurrence_id", prev_alias)
+  visit_detail_id <- gsub("placeholder", "visit_detail_id", prev_alias)
 
-  end_join_query <-
-    glue("
+  # The first table is just a from statement
+  if(is.na(prev_alias)) {
+    end_join_query = glue("FROM {variable_names$alias}")
+  } else {
+    end_join_query <-
+      glue("
     FULL JOIN {variable_names$alias}
-        ON adm.person_id = {variable_names$alias}.person_id
-       AND adm.visit_occurrence_id = {variable_names$alias}.visit_occurrence_id
-       AND (adm.visit_detail_id = {variable_names$alias}.visit_detail_id OR
-            adm.visit_detail_id IS NULL)
-       {time_join}
+        ON COALESCE({person_id}) = {variable_names$alias}.person_id
+       AND COALESCE({visit_occurrence_id}) = {variable_names$alias}.visit_occurrence_id
+       AND (COALESCE({visit_detail_id}) = {variable_names$alias}.visit_detail_id OR
+            COALESCE({visit_detail_id}) IS NULL)
+       AND COALESCE({time_in_icu}) = {variable_names$alias}.time_in_icu
        AND {variable_names$alias}.time_in_icu >= @first_window
 			 AND {variable_names$alias}.time_in_icu <= @last_window
          ")
+  }
+  end_join_query
+}
+
+all_id_vars <- function(with_queries_per_table, string){
+  all_time_in_icu <- glue_collapse(
+    glue("{with_queries_per_table$alias}.{string}"),
+    sep = ", ")
 }
