@@ -142,15 +142,15 @@ drug_with_query <- function(concepts, variable_names,
 
   drug_with_query
 }
-end_join_query <- function(table_name, variable_names, prev_alias){
+end_join_query <- function(table_name, variable_names, prev_time_vars){
 
   variable_names <- variable_names %>%
     filter(table == table_name)
 
   # The first table in the combined join doesn't have a previous time variable to join to.
   # But all the others have to.
-  if(!is.na(prev_alias)) {
-    time_join = glue("AND {prev_alias}.time_in_icu = {variable_names$alias}.time_in_icu")
+  if(!is.na(prev_time_vars)) {
+    time_join = glue("AND COALESCE({prev_time_vars}) = {variable_names$alias}.time_in_icu")
   } else {
     time_join = ""
   }

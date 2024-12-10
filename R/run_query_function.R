@@ -52,6 +52,7 @@
 #' @importFrom stringr str_detect
 #' @importFrom SqlRender translate render
 #' @importFrom readr read_file
+#' @importFrom purrr accumulate
 #' @export
 get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,
@@ -152,11 +153,14 @@ get_score_variables <- function(conn, dialect, schema,
     # Need to get alias of the previous table for the timing join, if it exists.
     left_join(variable_names %>% select(table, alias),
               by = "table") %>%
-    mutate(prev_alias = lag(alias)) %>%
+    # Pasting all previous aliases together so I can use it in a coalesce for a join.
+    mutate(prev_time_vars = accumulate(glue("{alias}.time_in_icu"),
+                                       ~ glue("{.x}, {.y}"))) %>%
+    mutate(prev_time_vars = lag(prev_time_vars)) %>%
     # end_join_query is not vectorised
     rowwise() %>%
     mutate(end_join_query = end_join_query(table, variable_names,
-                                           prev_alias)) %>%
+                                           prev_time_vars)) %>%
     ungroup()
 
   # Combining each query type into a string
