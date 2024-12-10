@@ -137,7 +137,7 @@ get_score_variables <- function(conn, dialect, schema,
     # with_queries are not vectorised
     rowwise() %>%
     mutate(with_query =
-             ifelse(table == "Drug",
+             if_else(table == "Drug",
                      drug_with_query(concepts, variable_names = variable_names,
                                       window_start_point, cadence,
                                       dialect),

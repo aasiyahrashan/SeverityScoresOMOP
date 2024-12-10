@@ -6,7 +6,9 @@ with_query <- function(concepts, table_name, variable_names,
     filter(table == table_name) %>%
     # Visit detail can only be queried for the emergency admission variable
     filter(table != "Visit Detail" |
-             (table == "Visit Detail" & short_name == "emergency_admission"))
+             (table == "Visit Detail" & short_name == "emergency_admission")) %>%
+    # Drugs are handled separately
+    filter(table != "Drug")
 
   variable_names <- variable_names %>%
     filter(table == table_name)
@@ -43,7 +45,7 @@ with_query <- function(concepts, table_name, variable_names,
   	,{window} as time_in_icu
      {variables}
     FROM icu_admission_details adm
-    INNER JOIN @schema.{variable_names$db_table_name}
+    INNER JOIN @schema.{variable_names$db_table_name} t
     -- making sure the visits match up, and filtering by number of days in ICU
   	ON adm.person_id = t.person_id
   	AND adm.visit_occurrence_id = t.visit_occurrence_id
@@ -53,7 +55,7 @@ with_query <- function(concepts, table_name, variable_names,
     {units_of_measure_query}
     -- For string searching by concept name if required
     INNER JOIN @schema.concept c
-    ON c.concept_id = t.drug_concept_id
+    ON c.concept_id = t.{variable_names$concept_id_var}
     GROUP BY t.person_id
   	,t.visit_occurrence_id
   	,t.visit_detail_id
@@ -109,7 +111,7 @@ drug_with_query <- function(concepts, variable_names,
           ,t_w.visit_occurrence_id
           ,t_w.visit_detail_id
           ,time_in_icu
-          @variables
+          {variables}
       --- Filtering whole table for string matches so don't need to lateral join the whole thing
       FROM (
           SELECT
@@ -118,8 +120,8 @@ drug_with_query <- function(concepts, variable_names,
           ,adm.visit_detail_id
           ,t.drug_exposure_id
           ,c.concept_name
-          ,@window_start as drug_start
-          ,@window_end as drug_end
+          ,{window_start} as drug_start
+          ,{window_end} as drug_end
           FROM icu_admission_details adm
           INNER JOIN @schema.drug_exposure t
           ON adm.person_id = t.person_id
@@ -127,7 +129,7 @@ drug_with_query <- function(concepts, variable_names,
           AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
           INNER JOIN @schema.concept c
           ON c.concept_id = t.drug_concept_id
-          WHERE @string_search_expression
+          WHERE {string_search_expression}
       ) t_w
       {drug_join}
       GROUP BY
