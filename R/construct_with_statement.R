@@ -11,7 +11,7 @@ with_query <- function(concepts, table_name, variable_names,
   variable_names <- variable_names %>%
     filter(table == table_name)
 
-  if (nrow(concepts == 0)){
+  if (nrow(concepts) == 0){
     return("")
   }
 
@@ -35,19 +35,21 @@ with_query <- function(concepts, table_name, variable_names,
   # Constructing main query
   with_query <-
     glue("
-    , {alias} as (
+    , {variable_names$alias} as (
+    SELECT
      t.person_id
     ,t.visit_occurrence_id
     ,t.visit_detail_id
   	,{window} as time_in_icu
-    {variables}
-    INNER JOIN @schema.{db_table_name}
+     {variables}
+    FROM icu_admission_details adm
+    INNER JOIN @schema.{variable_names$db_table_name}
     -- making sure the visits match up, and filtering by number of days in ICU
   	ON adm.person_id = t.person_id
   	AND adm.visit_occurrence_id = t.visit_occurrence_id
   	AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-  	AND {window} >= '@first_window'
-  	AND {window} < '@last_window'
+  	AND {window} >= @first_window
+  	AND {window} <= @last_window
     {units_of_measure_query}
     -- For string searching by concept name if required
     INNER JOIN @schema.concept c
@@ -57,6 +59,7 @@ with_query <- function(concepts, table_name, variable_names,
   	,t.visit_detail_id
   	,{window} )
          ")
+  with_query
 }
 
 drug_with_query <- function(concepts, variable_names,
@@ -72,7 +75,7 @@ drug_with_query <- function(concepts, variable_names,
   variable_names <- variable_names %>%
     filter(table == "Drug")
 
-  if (nrow(concepts == 0)){
+  if (nrow(concepts) == 0){
     return("")
   }
 
@@ -87,7 +90,7 @@ drug_with_query <- function(concepts, variable_names,
                              cadence)
 
   # Variables query
-  variables <- variables_query(concepts, "Drug",
+  variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
   string_search_expression = string_search_expression(concepts, "Drug")
@@ -97,7 +100,7 @@ drug_with_query <- function(concepts, variable_names,
 
   drug_with_query <-
     glue("
-    drug as (
+    , drg as (
       --- Note, this query will double count overlaps.
       --- If a person has two versions of a single drug, with overalapping start and end dates,
       --- the drug will be double counted.
@@ -135,25 +138,30 @@ drug_with_query <- function(concepts, variable_names,
       )
          ")
 
+  drug_with_query
 }
 end_join_query <- function(table_name, variable_names, prev_alias){
+
+  variable_names <- variable_names %>%
+    filter(table == table_name)
 
   # The first table in the combined join doesn't have a previous time variable to join to.
   # But all the others have to.
   if(!is.na(prev_alias)) {
-    time_join = glue("AND {prev_alias}.time_in_icu = {alias}.time_in_icu")
+    time_join = glue("AND {prev_alias}.time_in_icu = {variable_names$alias}.time_in_icu")
   } else {
     time_join = ""
   }
 
   end_join_query <-
     glue("
-    OUTER JOIN {alias}
-        ON adm.person_id = {alias}.person_id
-       AND adm.visit_occurrence_id = {alias}.visit_occurrence_id
-       AND (adm.visit_detail_id = {alias}.visit_detail_id OR adm.visit_detail_id IS NULL)
+    FULL JOIN {variable_names$alias}
+        ON adm.person_id = {variable_names$alias}.person_id
+       AND adm.visit_occurrence_id = {variable_names$alias}.visit_occurrence_id
+       AND (adm.visit_detail_id = {variable_names$alias}.visit_detail_id OR
+            adm.visit_detail_id IS NULL)
        {time_join}
-       AND {alias}.time_in_icu >= @first_window
-			 AND {alias}.time_in_icu < @last_window
+       AND {variable_names$alias}.time_in_icu >= @first_window
+			 AND {variable_names$alias}.time_in_icu < @last_window
          ")
 }

@@ -111,7 +111,7 @@ string_search_expression <- function(concepts, table_name) {
 #' Internal function called in `get_score_variables`.
 #' Builds the 'variable required' query for each table
 variables_query <- function(concepts,
-                             concept_id_var_name,
+                             concept_id_var,
                              table_id_var = ""){
 
   variables_required = ""
@@ -143,19 +143,19 @@ variables_query <- function(concepts,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       max_query = glue(
-        ", MAX(CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", MAX(CASE WHEN {concept_id_var} IN ({concept_id})
            {additional_filter_query}
                     THEN {omop_variable}
                END) AS max_{short_name}"
       ),
       min_query = glue(
-        ", MIN(CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", MIN(CASE WHEN {concept_id_var} IN ({concept_id})
            {additional_filter_query}
                     THEN {omop_variable}
                END) AS min_{short_name}"
       ),
       unit_query = glue(
-        ", MIN(CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", MIN(CASE WHEN {concept_id_var} IN ({concept_id})
            {additional_filter_query}
                     THEN c_unit.concept_name
                END) AS unit_{short_name}"
@@ -198,7 +198,7 @@ variables_query <- function(concepts,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", COUNT ( CASE WHEN {concept_id_var} IN ({concept_id})
            {value_as_concept_id_query}
            {additional_filter_query}
            THEN {table_id_var}

@@ -68,6 +68,7 @@ get_score_variables <- function(conn, dialect, schema,
   # Getting list of all variable names
   variable_names <- read_delim(file = system.file("variable_names.csv",
                                                   package = "SeverityScoresOMOP"))
+
   # Getting the list of concept IDs required and creating SQL queries from them.
   concepts <- read_delim(file = concepts_file_path) %>%
     # Filtering for the scores required.
@@ -133,30 +134,39 @@ get_score_variables <- function(conn, dialect, schema,
   # Constructing with query for each table.
   with_queries_per_table <- concepts %>%
     distinct(table) %>%
+    # with_queries are not vectorised
+    rowwise() %>%
     mutate(with_query =
-             if_else(table == "Drug",
-                     drug_with_query(concepts, variable_names,
+             ifelse(table == "Drug",
+                     drug_with_query(concepts, variable_names = variable_names,
                                       window_start_point, cadence,
                                       dialect),
-                     with_query(concepts, table, variable_names,
-                                window_start_point, cadence))
+                     with_query(concepts,
+                                table_name = table, variable_names,
+                                window_start_point = window_start_point,
+                                cadence))) %>%
+    ungroup()
 
   # Constructing end join query for each table.
   with_queries_per_table <- with_queries_per_table %>%
     # Need to get alias of the previous table for the timing join, if it exists.
     left_join(variable_names %>% select(table, alias),
               by = "table") %>%
-    mutate(prev_alias = lag(alias)),
+    mutate(prev_alias = lag(alias)) %>%
+    # end_join_query is not vectorised
+    rowwise() %>%
     mutate(end_join_query = end_join_query(table, variable_names,
-                                           prev_alias))
+                                           prev_alias)) %>%
+    ungroup()
 
   # Combining each query type into a string
   all_with_queries <- glue_collapse(with_queries_per_table$with_query,
                                     sep = "\n")
   all_end_join_queries <- glue_collapse(with_queries_per_table$end_join_query,
                                         sep = "\n")
-  all_time_in_icu <- glue_collapse(with_queries_per_table$alias,
-                                   sep = ", ")
+  all_time_in_icu <- glue_collapse(
+    glue("{with_queries_per_table$alias}.time_in_icu"),
+    sep = ", ")
   # All required variables for the queries
   all_required_variables <- all_required_variables_query(concepts)
 
@@ -165,9 +175,11 @@ get_score_variables <- function(conn, dialect, schema,
     system.file("physiology_variables.sql",
                 package = "SeverityScoresOMOP")) %>%
     render(
+      age_query = age_query,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
       all_time_in_icu = all_time_in_icu,
+      all_required_variables = all_required_variables,
       schema = schema,
       first_window = first_window,
       last_window = last_window) %>%
