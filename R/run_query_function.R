@@ -102,10 +102,9 @@ get_score_variables <- function(conn, dialect, schema,
   }
 
   # Making sure that string search concepts don't have extra filters.
-  if(!concepts %>%
-     filter(omop_variable == "concept_name") %>%
-     pull(concept_id_value) %>%
-     all(is.na(.))) {
+  if(any(!is.na(concepts %>%
+                filter(omop_variable == "concept_name") %>%
+                pull(concept_id_value)))) {
     stop("A line with `omop_variable` set to `concept_name` has concept_id_value filled in.
          Either delete the value in `concept_id_value`, or change the `omop_variable` to
          something that contains a concept_id")

@@ -96,9 +96,9 @@ string_search_expression <- function(concepts, table_name) {
     # It's possible for strings to represent the same variable, so grouping here.
     group_by(short_name) %>%
     summarise(
-      concept_id = glue("LOWER(t_w.{omop_variable}) LIKE '%",
+      concept_id = glue("LOWER({omop_variable}) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER(t_w.{omop_variable}) LIKE '%"),
+                                      sep = "%' OR LOWER({omop_variable}) LIKE '%"),
                         "%'")) %>%
     pull(concept_id)
 
