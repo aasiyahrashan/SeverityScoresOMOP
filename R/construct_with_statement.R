@@ -127,6 +127,8 @@ drug_with_query <- function(concepts, variable_names,
           ON adm.person_id = t.person_id
           AND adm.visit_occurrence_id = t.visit_occurrence_id
           AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+          AND ({window_start} >= @first_window OR {window_end} >= @first_window)
+          AND ({window_start} <= @last_window OR {window_end} <= @last_window)
           INNER JOIN @schema.concept c
           ON c.concept_id = t.drug_concept_id
           WHERE {string_search_expression}
@@ -164,6 +166,6 @@ end_join_query <- function(table_name, variable_names, prev_time_vars){
             adm.visit_detail_id IS NULL)
        {time_join}
        AND {variable_names$alias}.time_in_icu >= @first_window
-			 AND {variable_names$alias}.time_in_icu < @last_window
+			 AND {variable_names$alias}.time_in_icu <= @last_window
          ")
 }
