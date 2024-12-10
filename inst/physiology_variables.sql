@@ -19,105 +19,6 @@ AS (
 		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) <= @end_date
 	),
 
---- Measurement
-measurement as (
-  	SELECT t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-  	, @window_measurement as time_in_icu
-  	--- List of concept IDs to get the min/max of, along with names to assign them to.
-  	-- eg MAX(CASE WHEN m.measurement_concept_id = 4301868 then m.value_as_number END) AS max_hr
-  	@measurement_variables
-  FROM icu_admission_details adm
-  INNER JOIN @schema.measurement t
-  	-- making sure the visits match up, and filtering by number of days in ICU
-  	ON adm.person_id = t.person_id
-  	AND adm.visit_occurrence_id = t.visit_occurrence_id
-  	AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-  	AND @window_measurement >= '@first_window'
-  	AND @window_measurement < '@last_window'
-  -- getting unit of measure for numeric variables.
-  LEFT JOIN @schema.concept c_unit ON t.unit_concept_id = c_unit.concept_id
-  	AND t.unit_concept_id IS NOT NULL
-  -- want min or max values for each visit each day.
-  GROUP BY t.person_id
-  	,t.visit_occurrence_id
-  	,t.visit_detail_id
-  	,@window_measurement
-	),
-
---- The remaining queries mainly use counts
-/*
-e.g. COUNT (CASE
-                WHEN observation_concept_id = '4214956'
-                 AND value_as_concept_id IN ('4267414', '4245975')
-                THEN observation_id
-            END ) AS comorbid_number
-*/
---- Observation
-observation AS (SELECT t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_observation AS time_in_icu
-           @observation_variables
-      FROM icu_admission_details adm
-      INNER JOIN @schema.observation t
-      ON adm.person_id = t.person_id
-      AND adm.visit_occurrence_id = t.visit_occurrence_id
-      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_observation
-    ),
-
-condition AS (SELECT t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_condition AS time_in_icu
-           @condition_variables
-      FROM icu_admission_details adm
-      INNER JOIN @schema.condition_occurrence t
-      ON adm.person_id = t.person_id
-      AND adm.visit_occurrence_id = t.visit_occurrence_id
-      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_condition
-    ),
-
-procedure AS (SELECT t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_procedure AS time_in_icu
-           @procedure_variables
-      FROM icu_admission_details adm
-      INNER JOIN @schema.procedure_occurrence t
-      ON adm.person_id = t.person_id
-      AND adm.visit_occurrence_id = t.visit_occurrence_id
-      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_procedure
-    ),
-
-device AS (SELECT t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_device AS time_in_icu
-           @device_variables
-      FROM icu_admission_details adm
-      INNER JOIN @schema.device_exposure t
-      ON adm.person_id = t.person_id
-      AND adm.visit_occurrence_id = t.visit_occurrence_id
-      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           ,@window_device
-    ),
 
 drug as (
       --- Note, this query will double count overlaps.
@@ -155,22 +56,6 @@ drug as (
       ,t_w.visit_detail_id
       ,time_in_icu
 ),
-
-visit_detail_emergency_admission AS (SELECT t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-           --- has to be 0 since ICU admission datetime is derived from the same variables.
-           ,0 AS time_in_icu
-           @visit_detail_variables
-      FROM icu_admission_details adm
-      INNER JOIN @schema.visit_detail t
-      ON adm.person_id = t.person_id
-      AND adm.visit_occurrence_id = t.visit_occurrence_id
-      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
-  GROUP BY t.person_id
-           ,t.visit_occurrence_id
-           ,t.visit_detail_id
-    )
 
 SELECT adm.*
            ,COALESCE(m.time_in_icu, o.time_in_icu, co.time_in_icu,

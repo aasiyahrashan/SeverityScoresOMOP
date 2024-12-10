@@ -1,9 +1,12 @@
-with_statement <- function(concepts, table_name, variable_names,
+with_query <- function(concepts, table_name, variable_names,
                            window_start_point, cadence){
 
   # Variable names, and return empty string if no concepts required
   concepts <- concepts %>%
-    filter(table == table_name)
+    filter(table == table_name) %>%
+    # Visit detail can only be queried for the emergency admission variable
+    filter(table != "Visit Detail" |
+             (table == "Visit Detail" & short_name == "emergency_admission"))
 
   variable_names <- variable_names %>%
     filter(table == table_name)
@@ -12,11 +15,16 @@ with_statement <- function(concepts, table_name, variable_names,
     return("")
   }
 
-  # Windowing query
-  window <- window_query(window_start_point,
-                         variable_names$start_datetime_var,
-                         variable_names$start_date_var,
-                         cadence)
+  # Windowing query. Visit detail window time is always 0, since it's the beginning of the admission
+  if(table_name != "Visit Detail"){
+    window <- window_query(window_start_point,
+                           variable_names$start_datetime_var,
+                           variable_names$start_date_var,
+                           cadence)
+  } else {
+    window <- 0
+  }
+
   # Variable query
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,

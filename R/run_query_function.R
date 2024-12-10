@@ -78,7 +78,7 @@ get_score_variables <- function(conn, dialect, schema,
     translate(tolower(dialect))
   adm_details <- dbGetQuery(conn, raw_sql)t
 
-  # Getting list of all table names
+  # Getting list of all variable names
   variable_names <- read_delim(file = system.file("variable_names.csv",
                                                   package = "SeverityScoresOMOP"))
   # Getting the list of concept IDs required and creating SQL queries from them.
@@ -154,25 +154,13 @@ get_score_variables <- function(conn, dialect, schema,
     gcs_data <- dbGetQuery(conn, raw_sql)
   }
 
-  # Admisison type stored in the visit detail also needs a separate query,
-  # though it's run with everything else.
-
-  visit_detail_concepts <- concepts %>%
-    filter(table == "Visit Detail" & short_name == "emergency_admission")
-
-  # Initialize count query strings
-  visit_detail_variables = ""
-
-  # Emergency admissions from the visit detail table
-  if (nrow(visit_detail_concepts) > 0) {
-    emergency_admission_concept <- visit_detail_concepts$concept_id
-    visit_detail_variables <- glue(
-      ",COUNT( CASE
-         WHEN t.visit_detail_source_concept_id = {emergency_admission_concept}
-         THEN t.visit_detail_id
-     END ) AS count_emergency_admission "
-    )
-  }
+  # Constructing with query for each table.
+  with_queries_per_table <- concepts %>%
+    distinct(table) %>%
+    mutate(with_query = with_query(concepts, table, variable_names,
+                                   window_start_point, cadence))
+  all_with_queries <- glue_collapse(with_queries_per_table$with_query,
+                                    sep = "\n")
 
   # Importing the physiology data query and substituting variables
   raw_sql <- read_file(
