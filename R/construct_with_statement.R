@@ -29,13 +29,13 @@ with_query <- function(concepts, table_name, variable_names,
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
-  # Units of measure
+  # Units of measure join.
   units_of_measure_query <- units_of_measure_query(table_name)
 
   # Constructing main query
   with_query <-
     glue("
-    , WITH {alias} as (
+    , {alias} as (
      t.person_id
     ,t.visit_occurrence_id
     ,t.visit_detail_id
@@ -52,10 +52,83 @@ with_query <- function(concepts, table_name, variable_names,
     GROUP BY t.person_id
   	,t.visit_occurrence_id
   	,t.visit_detail_id
-  	,{window}
+  	,{window} )
          ")
 }
 
+drug_with_query <- function(concepts, variable_names,
+                            window_start_point, cadence){
+
+  # The drug table query is completely different because it needs to account for both
+  # start and end times.
+
+  # Getting data for the drug table only
+  concepts <- concepts %>%
+    filter(table == "Drug")
+  variable_names <- variable_names %>%
+    filter(table == "Drug")
+
+  if (nrow(concepts == 0)){
+    return("")
+  }
+
+  # Window query
+  window_start <- window_query(window_start_point,
+                               variable_names$start_datetime_var,
+                               variable_names$start_date_var,
+                               cadence)
+  window_end <- window_query(window_start_point,
+                             variable_names$end_datetime_var,
+                             variable_names$end_date_var,
+                             cadence)
+
+  # Variables query
+  variables <- variables_query(concepts, "Drug",
+                               variable_names$concept_id_var,
+                               variable_names$id_var)
+  string_search_expression = string_search_expression(concepts, "Drug")
+
+  drug_with_query <-
+    glue("
+    drug as (
+      --- Note, this query will double count overlaps.
+      --- If a person has two versions of a single drug, with overalapping start and end dates,
+      --- the drug will be double counted.
+      SELECT
+          t_w.person_id
+          ,t_w.visit_occurrence_id
+          ,t_w.visit_detail_id
+          ,time_in_icu
+          @variables
+      --- Filtering whole table for string matches so don't need to lateral join the whole thing
+      FROM (
+          SELECT
+          adm.person_id
+          ,adm.visit_occurrence_id
+          ,adm.visit_detail_id
+          ,t.drug_exposure_id
+          ,c.concept_name
+          ,@window_start as drug_start
+          ,@window_end as drug_end
+          FROM icu_admission_details adm
+          INNER JOIN @schema.drug_exposure t
+          ON adm.person_id = t.person_id
+          AND adm.visit_occurrence_id = t.visit_occurrence_id
+          AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+          INNER JOIN @schema.concept c
+          ON c.concept_id = t.drug_concept_id
+          WHERE @string_search_expression
+      ) t_w
+      @drug_join
+      GROUP BY
+      t_w.person_id
+      ,t_w.visit_occurrence_id
+      ,t_w.visit_detail_id
+      ,time_in_icu
+      )
+         ")
+
+}
 end_join_query <- function(table_name, variable_names, prev_alias){
 
   # The first table in the combined join doesn't have a previous time variable to join to.

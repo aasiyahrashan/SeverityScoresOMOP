@@ -172,20 +172,7 @@ get_score_variables <- function(conn, dialect, schema,
     render(start_date = start_date,
            end_date = end_date)
 
-           drug_join = translate_drug_join(dialect),
-
-
-
-           window_drug_start = window_query(window_start_point,
-                                        "drug_exposure_start_datetime",
-                                        "drug_exposure_start_date", cadence),
-           window_drug_end = window_query(window_start_point,
-                                        "drug_exposure_end_datetime",
-                                        "drug_exposure_end_date", cadence),
-           drug_variables = variables_query(concepts, "Drug",
-                                            "concept_name",
-                                            table_id_var = "drug_exposure_id"),
-           drug_string_search_expression = string_search_expression(concepts, "Drug")) %>%
+           drug_join = translate_drug_join(dialect)
 
 
   #### Running the query

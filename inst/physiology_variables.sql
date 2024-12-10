@@ -1,3 +1,4 @@
+-- The queries for most tables are constructed in the R code and added here via the @ parameters.
 WITH icu_admission_details
 AS (
 	--- We generally want ICU admission information.
