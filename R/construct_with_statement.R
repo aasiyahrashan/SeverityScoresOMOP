@@ -54,8 +54,9 @@ with_query <- function(concepts, table_name, variable_names,
   	AND {window} <= @last_window
     {units_of_measure_query}
     -- For string searching by concept name if required
-    INNER JOIN @schema.concept c
-    ON c.concept_id = t.{variable_names$concept_id_var}
+    -- Slightly odd alias, but using it to match drug table
+    INNER JOIN @schema.concept t_w
+    ON t_w.concept_id = t.{variable_names$concept_id_var}
     GROUP BY t.person_id
   	,t.visit_occurrence_id
   	,t.visit_detail_id
@@ -119,6 +120,7 @@ drug_with_query <- function(concepts, variable_names,
           ,adm.visit_occurrence_id
           ,adm.visit_detail_id
           ,t.drug_exposure_id
+          ,t.drug_concept_id
           ,c.concept_name
           ,{window_start} as drug_start
           ,{window_end} as drug_end
