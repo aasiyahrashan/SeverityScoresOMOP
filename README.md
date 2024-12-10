@@ -9,7 +9,7 @@
 - I've only used this package with SQLServer and PostgreSQL. Most of the code was tested on Postgres only.
 - Copy the `inst/example_concepts.csv` file. 
 - Save it under the name `your_dataset_name_concepts.csv`. 
-- The file needs to be contain OMOP concept IDs which match the `short_names`. Don't edit the short names, since they're used in the code.
+- The file needs to contain OMOP concept IDs which match the `short_names`. Don't edit the short names, since they're used in the code.
 ````
     library(SeverityScoresOMOP)
     #### Connect to the database.
@@ -68,9 +68,9 @@ I suggest adding the file to your project version control.
 Description of variables:
 - score: Currently only takes values "APACHE II", "SOFA". This variable is used as a filter, based on the value of the `score` argument in the `get_score_variables` function
 - short_name:	This becomes part of the column name in the dataset extracted from SQL. If the same name is repeated on multiple rows, all the data is stored in one variable. Don't change the names of variables used in the severity scores, because they're used in the code.
-- table: Name of the OMOP table the data is stored in. Currently only allows `Measurement`, `Observation`, `Condition`, `Procedure`, `Device`. `Visit detail` is allowed if short_name is `emergency_admission`.
-- concept_id: 	OMOP concept ID for the variable. If a single short_name corresponds to multiple concept_ids, put the IDs on separate rows.
-- omop_variable:	Either value_as_number, value_as_concept_id, or nothing. If it's value as number, the output dataframe will contain 3 variables per short_name: min_short_name, max_short_name, unit_short_name. Note, unit_short_name relies on units being the same per patient and variable. Need to fix. If either value_as_concept_id or blank is entered, a count_short_name is returned per short_name. It represents the number of times that concept_id was recorded for that patient and time period.
+- table: Name of the OMOP table the data is stored in. Currently only allows `Measurement`, `Observation`, `Condition`, `Procedure`, `Device`, `Drug`. `Visit detail` is allowed if short_name is `emergency_admission`.
+- concept_id: 	OMOP concept ID for the variable. If a single short_name corresponds to multiple concept_ids, put the IDs on separate rows. Also allows a string for string searching the OMOP concept names. The query is `where concept.concept_name LIKE'%search_term%'` and is case insensitive.
+- omop_variable:	Either value_as_number, value_as_concept_id, concept_name (for string searches) or nothing. If it's value as number, the output dataframe will contain 3 variables per short_name: min_short_name, max_short_name, unit_short_name. Note, unit_short_name relies on units being the same per patient and variable. Need to fix. If value_as_concept_id, concept_name, or blank is entered, a count_short_name is returned per short_name. It represents the number of times that concept_id was recorded for that patient and time period.
 - concept_id_value:	If value_as_concept_id is selected for the omop_variable, this is the OMOP concept ID to filter the field by. If more than one is required, create a separate row.
 - name_of_value:	The name corresponding to the concept_id_value variable. Only used to make the file more readable.
 - additional_filter_variable_name:	Option to add an extra filter (usually by source name). This specifies the variable to filter by. Only allows one variable per short_name.
