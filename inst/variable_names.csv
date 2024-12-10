@@ -1,0 +1,8 @@
+table,id_var,concept_id_var,concept_id_value_var,start_date_var,start_datetime_var,end_date_var,end_datetime_var
+Measurement,measurement_concept_id,measurement_concept_id,,measurement_datetime,measurement_date,,
+Observation,observation_id,observation_concept_id,,observation_datetime,observation_date,,
+Condition,condition_occurrence_id,condition_concept_id,,condition_start_datetime,condition_start_date,,
+Procedure,procedure_occurrence_id,procedure_concept_id,,procedure_datetime,procedure_date,,
+Visit Detail,,,,,,,
+Device,device_exposure_id,device_concept_id,,device_exposure_start_datetime,device_exposure_start_date,,
+Drug,drug_exposure_id,drug_concept_id,,drug_exposure_start_datetime,drug_exposure_start_date,drug_exposure_end_datetime,drug_exposure_end_date
