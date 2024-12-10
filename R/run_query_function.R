@@ -183,15 +183,16 @@ get_score_variables <- function(conn, dialect, schema,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
       all_time_in_icu = all_time_in_icu,
-      all_required_variables = all_required_variables,
-      schema = schema,
-      first_window = first_window,
-      last_window = last_window) %>%
+      all_required_variables = all_required_variables) %>%
     # Don't know why the translate function adds an unnecessary CAST statement to the dates.
     # So not translating that part.
     translate(tolower(dialect)) %>%
-    render(start_date = start_date,
-           end_date = end_date)
+    render(
+      first_window = first_window,
+      last_window = last_window,
+      schema = schema,
+      start_date = start_date,
+      end_date = end_date)
   cat(raw_sql)
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
