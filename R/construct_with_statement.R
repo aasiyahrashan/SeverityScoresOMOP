@@ -35,7 +35,7 @@ with_query <- function(concepts, table_name, variable_names,
   # Constructing main query
   with_query <-
     glue("
-    , WITH {table_name} as (
+    , WITH {alias} as (
      t.person_id
     ,t.visit_occurrence_id
     ,t.visit_detail_id
@@ -53,5 +53,27 @@ with_query <- function(concepts, table_name, variable_names,
   	,t.visit_occurrence_id
   	,t.visit_detail_id
   	,{window}
+         ")
+}
+
+end_join_query <- function(table_name, variable_names, prev_alias){
+
+  # The first table in the combined join doesn't have a previous time variable to join to.
+  # But all the others have to.
+  if(!is.na(prev_alias)) {
+    time_join = glue("AND {prev_alias}.time_in_icu = {alias}.time_in_icu")
+  } else {
+    time_join = ""
+  }
+
+  end_join_query <-
+    glue("
+    OUTER JOIN {alias}
+        ON adm.person_id = {alias}.person_id
+       AND adm.visit_occurrence_id = {alias}.visit_occurrence_id
+       AND (adm.visit_detail_id = {alias}.visit_detail_id OR adm.visit_detail_id IS NULL)
+       {time_join}
+       AND {alias}.time_in_icu >= @first_window
+			 AND {alias}.time_in_icu < @last_window
          ")
 }

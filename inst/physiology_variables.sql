@@ -57,6 +57,22 @@ drug as (
       ,time_in_icu
 ),
 
+visit_detail_emergency_admission AS (SELECT t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
+           --- has to be 0 since ICU admission datetime is derived from the same variables.
+           ,0 AS time_in_icu
+           @visit_detail_variables
+      FROM icu_admission_details adm
+      INNER JOIN @schema.visit_detail t
+      ON adm.person_id = t.person_id
+      AND adm.visit_occurrence_id = t.visit_occurrence_id
+      AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  GROUP BY t.person_id
+           ,t.visit_occurrence_id
+           ,t.visit_detail_id
+    )
+
 SELECT adm.*
            ,COALESCE(m.time_in_icu, o.time_in_icu, co.time_in_icu,
            po.time_in_icu, dev.time_in_icu,

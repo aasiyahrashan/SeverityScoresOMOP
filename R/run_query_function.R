@@ -159,8 +159,23 @@ get_score_variables <- function(conn, dialect, schema,
     distinct(table) %>%
     mutate(with_query = with_query(concepts, table, variable_names,
                                    window_start_point, cadence))
+
+  # Constructing end join query for each table.
+  with_queries_per_table <- with_queries_per_table %>%
+    # Need to get alias of the previous table for the timing join, if it exists.
+    left_join(variable_names %>% select(table, alias),
+              by = "table") %>%
+    mutate(prev_alias = lag(alias)),
+    mutate(end_join_query = end_join_query(table, variable_names,
+                                           prev_alias))
+
+  # Combining each query type into a string
   all_with_queries <- glue_collapse(with_queries_per_table$with_query,
                                     sep = "\n")
+  all_end_join_queries <- glue_collapse(with_queries_per_table$end_join_query,
+                                        sep = "\n")
+  all_time_in_icu <- glue_collapse(with_queries_per_table$alias,
+                                   sep = ", ")
 
   # Importing the physiology data query and substituting variables
   raw_sql <- read_file(
