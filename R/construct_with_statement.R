@@ -1,14 +1,27 @@
-with_statement <- function(table_name, variable_names){
+with_statement <- function(concepts, table_name, variable_names,
+                           window_start_point, cadence){
 
-  # Variable names
+  # Variable names, and return empty string if no concepts required
+  concepts <- concepts %>%
+    filter(table == table_name)
+
   variable_names <- variable_names %>%
     filter(table == table_name)
 
+  if (nrow(concepts == 0)){
+    return("")
+  }
+
   # Windowing query
-
+  window <- window_query(window_start_point,
+                         variable_names$start_datetime_var,
+                         variable_names$start_date_var,
+                         cadence)
   # Variable query
-
-  # Units of measure - empty if the table isn't the measurement one.
+  variables <- variables_query(concepts,
+                               variable_names$concept_id_var,
+                               variable_names$id_var)
+  # Units of measure
   units_of_measure_query <- units_of_measure_query(table_name)
 
   # Constructing main query

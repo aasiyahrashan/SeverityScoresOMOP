@@ -110,17 +110,15 @@ string_search_expression <- function(concepts, table_name) {
 
 #' Internal function called in `get_score_variables`.
 #' Builds the 'variable required' query for each table
-variables_query <- function(concepts, table_name,
-                                     concept_id_var_name,
-                                     value_as_concept_id_var = "",
-                                     table_id_var = ""){
+variables_query <- function(concepts,
+                             concept_id_var_name,
+                             table_id_var = ""){
 
   variables_required = ""
 
   # Numeric variables
   numeric_concepts <-
     concepts %>%
-    filter(table == table_name) %>%
     filter(omop_variable == "value_as_number") %>%
     #### GCS can sometimes be stored as a concept ID instead
     #### of a number. These need a separate query.
@@ -166,8 +164,7 @@ variables_query <- function(concepts, table_name,
   # Non-numeric variables if concept ID provided. Returns counts.
   non_numeric_concepts <-
     concepts %>%
-    filter(table == table_name &
-             (omop_variable == "value_as_concept_id" |
+    filter((omop_variable == "value_as_concept_id" |
                 is.na(omop_variable))) %>%
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
@@ -193,7 +190,7 @@ variables_query <- function(concepts, table_name,
     mutate(
       value_as_concept_id_query = if_else(
         omop_variable == "value_as_concept_id",
-        glue("AND {value_as_concept_id_var}
+        glue("AND value_as_concept_id
               IN ({concept_id_value})"), "", ""),
       additional_filter_query =
         if_else(!is.na(additional_filter_variable_name),
@@ -211,8 +208,7 @@ variables_query <- function(concepts, table_name,
   # Returns counts.
   non_numeric_string_search_concepts <-
     concepts %>%
-    filter(table == table_name &
-             omop_variable == "concept_name") %>%
+    filter(omop_variable == "concept_name") %>%
     # It's possible for strings to represent the same variable, so grouping here.
     group_by(short_name, additional_filter_variable_name) %>%
     summarise(
