@@ -290,8 +290,9 @@ translate_drug_join <- function(dialect){
 }
 
 units_of_measure_query <- function(table_name){
-  # Only applies to the measurement table
-  if(table_name == "Measurement"){
+  # Only applies to tables with numbers
+  if(table_name %in% c("Measurement",
+                       "Observation")){
     units_of_measure_query <- glue(
       "
       -- getting unit of measure for numeric variables.
@@ -301,4 +302,22 @@ units_of_measure_query <- function(table_name){
     units_of_measure_query <- ""
   }
   units_of_measure_query
+}
+
+all_required_variables_query <- function(concepts){
+  # This collapsed list is required for the main sql query.
+  all_required_variables <- concepts %>%
+    mutate(short_name =
+             case_when(omop_variable == "value_as_concept_id" |
+                         omop_variable == "concept_name" |
+                         is.na(omop_variable) ~
+                         glue("count_{short_name}"),
+                       omop_variable == "value_as_number" ~
+                         glue("min_{short_name}, max_{short_name}, unit_{short_name}"))) %>%
+    distinct(short_name) %>%
+    pull(.) %>%
+    toString(.) %>%
+    glue(",", .)
+
+  all_required_variables
 }
