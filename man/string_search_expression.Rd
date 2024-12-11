@@ -5,7 +5,7 @@
 \title{Internal function called in `get_score_variables`.
 Builds a regex for string searches}
 \usage{
-string_search_expression(concepts, table_name)
+string_search_expression(concepts, variable_names, table_name)
 }
 \description{
 Internal function called in `get_score_variables`.

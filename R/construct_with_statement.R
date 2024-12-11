@@ -1,6 +1,5 @@
 with_query <- function(concepts, table_name, variable_names,
                            window_start_point, cadence){
-
   # Variable names, and return empty string if no concepts required
   concepts <- concepts %>%
     filter(table == table_name) %>%

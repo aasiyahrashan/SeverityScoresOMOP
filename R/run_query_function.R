@@ -44,15 +44,13 @@
 #' If cadence is 1, the unit will be an hour, and so on.
 #' The columns returned will be named using the short_names specified in the `mapping_path` file
 #'
-#' @import lubridate
 #' @import DBI
 #' @import dplyr
-#' @import glue
-#' @import readr
+#' @importFrom glue glue glue_collapse
 #' @importFrom stringr str_detect
 #' @importFrom SqlRender translate render
-#' @importFrom readr read_file
-#' @importFrom purrr accumulate
+#' @importFrom readr read_file read_delim
+#' @importFrom purrr accumulate map
 #' @export
 get_score_variables <- function(conn, dialect, schema,
                                 start_date, end_date,
@@ -135,21 +133,19 @@ get_score_variables <- function(conn, dialect, schema,
   # Constructing with query for each table.
   with_queries_per_table <- concepts %>%
     distinct(table) %>%
-    # with_queries are not vectorised
-    rowwise() %>%
-    mutate(with_query =
-             if_else(table == "Drug",
-                     drug_with_query(concepts, variable_names = variable_names,
-                                      window_start_point, cadence,
-                                      dialect),
-                     with_query(concepts,
-                                table_name = table, variable_names,
-                                window_start_point = window_start_point,
-                                cadence))) %>%
-    ungroup()
+    pull(table) %>%
+    map(., ~ ifelse(.x == "Drug",
+                    drug_with_query(concepts, variable_names = variable_names,
+                                    window_start_point, cadence,
+                                    dialect),
+                    with_query(concepts,.x, variable_names,
+                               window_start_point = window_start_point,
+                               cadence)))
 
   # Constructing end join query for each table.
-  with_queries_per_table <- with_queries_per_table %>%
+  end_join_queries <-
+    concepts %>%
+    distinct(table) %>%
     # Need to get alias of the previous table for the timing join, if it exists.
     left_join(variable_names %>% select(table, alias),
               by = "table") %>%
@@ -164,9 +160,9 @@ get_score_variables <- function(conn, dialect, schema,
     ungroup()
 
   # Combining each query type into a string
-  all_with_queries <- glue_collapse(with_queries_per_table$with_query,
+  all_with_queries <- glue_collapse(with_queries_per_table,
                                     sep = "\n")
-  all_end_join_queries <- glue_collapse(with_queries_per_table$end_join_query,
+  all_end_join_queries <- glue_collapse(end_join_queries$end_join_query,
                                         sep = "\n")
   # All required variables for the queries
   all_required_variables <- all_required_variables_query(concepts)
@@ -179,10 +175,10 @@ get_score_variables <- function(conn, dialect, schema,
       age_query = age_query,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
-      all_time_in_icu = all_id_vars(with_queries_per_table, "time_in_icu"),
-      all_person_id = all_id_vars(with_queries_per_table, "person_id"),
-      all_visit_occurrence_id = all_id_vars(with_queries_per_table, "visit_occurrence_id"),
-      all_visit_detail_id = all_id_vars(with_queries_per_table, "visit_detail_id"),
+      all_time_in_icu = all_id_vars(end_join_queries, "time_in_icu"),
+      all_person_id = all_id_vars(end_join_queries, "person_id"),
+      all_visit_occurrence_id = all_id_vars(end_join_queries, "visit_occurrence_id"),
+      all_visit_detail_id = all_id_vars(end_join_queries, "visit_detail_id"),
       all_required_variables = all_required_variables) %>%
     # Don't know why the translate function adds an unnecessary CAST statement to the dates.
     # So not translating that part.
@@ -193,7 +189,7 @@ get_score_variables <- function(conn, dialect, schema,
       schema = schema,
       start_date = start_date,
       end_date = end_date)
-  cat(raw_sql)
+
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
 

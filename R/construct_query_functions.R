@@ -259,17 +259,12 @@ variables_query <- function(concepts,
 
   # Collapsing the queries into strings.
   variables_required <-
-    glue(glue_collapse(numeric_concepts$max_query, sep = "\n"),
-         "\n",
-         glue_collapse(numeric_concepts$min_query, sep = "\n"),
-         "\n",
-         glue_collapse(numeric_concepts$unit_query, sep = "\n"),
-         "\n",
-         glue_collapse(non_numeric_concepts$count_query, sep = "\n"),
-         "\n",
-         glue_collapse(non_numeric_string_search_concepts$count_query, sep = "\n"),
-         "\n"
-         )
+    glue(glue_collapse(c(numeric_concepts$max_query,
+                         numeric_concepts$min_query,
+                         numeric_concepts$unit_query,
+                         non_numeric_concepts$count_query,
+                         non_numeric_string_search_concepts$count_query),
+                       sep = "\n"), "\n")
 
   # Return query
   variables_required
