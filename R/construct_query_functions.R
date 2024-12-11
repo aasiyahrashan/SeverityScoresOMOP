@@ -83,29 +83,55 @@ age_query <- function(age_method, dialect) {
 }
 #' Internal function called in `get_score_variables`.
 #' Builds a regex for string searches
-string_search_expression <- function(concepts, table_name) {
+string_search_expression <- function(concepts,
+                                     variable_names,
+                                     table_name) {
 
   # Finding variables which need string matches
   concepts <- concepts %>%
-    filter(table == table_name &
-             omop_variable == "concept_name")
+    filter(table == table_name)
+  variable_names <- variable_names %>%
+    filter(table == table_name)
+
+  # Need a section for concept ID queries
+  concept_id_expression <-
+    concepts %>%
+    filter(omop_variable != "concept_name" |
+             is.na(omop_variable)) %>%
+    reframe(
+      concept_id = glue("{variable_names$concept_id_var} IN (",
+                        glue_collapse(unique(concept_id), sep = ", "),
+                        ")")) %>%
+    pull(concept_id)
 
   # This collapsed list is used for string queries
   string_search_expression <-
     concepts %>%
-    # It's possible for strings to represent the same variable, so grouping here.
-    group_by(short_name) %>%
-    summarise(
-      concept_id = glue("LOWER({omop_variable}) LIKE '%",
-                        glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER({omop_variable}) LIKE '%"),
-                        "%'")) %>%
+    filter(omop_variable == "concept_name") %>%
+    distinct(omop_variable, concept_id) %>%
+    reframe(
+      concept_id =
+        glue("LOWER({omop_variable}) LIKE '% ",
+             glue_collapse(tolower(concept_id),
+                                 sep = "%' OR LOWER({omop_variable}) LIKE '%"),
+             "%'")) %>%
     pull(concept_id)
 
-  # If no concepts, I want no row returned. So I make the condition say 'where false'.
-  string_search_expression <- ifelse(nrow(concepts) != 0,
-                                     string_search_expression, "false")
-  string_search_expression
+
+  # Joining based on rows filled in.
+  if(length(concept_id_expression) > 0 &
+     length(string_search_expression) > 0){
+    combined_expression <- glue("{concept_id_expression} OR {string_search_expression}")
+  } else if (length(concept_id_expression) > 0){
+    combined_expression <- concept_id_expression
+  } else if (length(string_search_expression) > 0){
+    combined_expression <- string_search_expression
+  } else{
+    # If no concepts, I want no row returned. So I make the condition say 'where false'.
+    combined_expression <- "false"
+  }
+
+  combined_expression
 }
 
 #' Internal function called in `get_score_variables`.

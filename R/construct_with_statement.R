@@ -96,7 +96,8 @@ drug_with_query <- function(concepts, variable_names,
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
-  string_search_expression = string_search_expression(concepts, "Drug")
+  string_search_expression = string_search_expression(concepts,
+                                                      variable_names, "Drug")
 
   # Drug join
   drug_join <- translate_drug_join(dialect)
