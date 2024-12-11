@@ -54,7 +54,7 @@ AS (
 			AND adm.visit_occurrence_id = t.visit_occurrence_id
 			AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
 			AND @window_measurement >= '@first_window'
-			AND @window_measurement < '@last_window'
+			AND @window_measurement <= '@last_window'
 	--- Making sure we get gcs values only. The variables become null otherwise.
 	WHERE value_as_concept_id IS NOT NULL
 		AND measurement_concept_id IN ('3016335', '3008223', '3009094')

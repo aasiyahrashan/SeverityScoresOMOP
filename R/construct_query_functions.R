@@ -33,12 +33,9 @@ omop_connect <-
     }
   }
 
-#' Internal function called in `get_score_variables`.
-#' Builds the windowing query based on variable names in each table.
+# Builds the 'time_in_icu' windowing query based on variable names in each table.
 window_query <- function(window_start_point, time_variable,
                          date_variable, cadence){
-
-  # Checking arguments
 
   # Checking arguments
   if (!(window_start_point %in% c("calendar_date", "icu_admission_time"))) {
@@ -63,8 +60,7 @@ window_query <- function(window_start_point, time_variable,
     glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable})) / ({cadence} * 60))"))
 }
 
-#' Internal function called in `get_score_variables`.
-#' Builds the age query
+# Builds the age query
 age_query <- function(age_method, dialect) {
 
   if (!(age_method %in% c("dob", "year_only"))) {
@@ -81,46 +77,70 @@ age_query <- function(age_method, dialect) {
     " YEAR(COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
                    vo.visit_start_datetime, vo.visit_start_date)) - p.year_of_birth AS age")
 }
-#' Internal function called in `get_score_variables`.
-#' Builds a regex for string searches
-string_search_expression <- function(concepts, table_name) {
+
+# Builds the 'WHERE' query for the drug table, to ensure the generate_series SQL
+# function is only called for patients and timepoints with the drugs of interest.
+string_search_expression <- function(concepts,
+                                     variable_names,
+                                     table_name) {
 
   # Finding variables which need string matches
   concepts <- concepts %>%
-    filter(table == table_name &
-             omop_variable == "concept_name")
+    filter(table == table_name)
+  variable_names <- variable_names %>%
+    filter(table == table_name)
+
+  # Need a section for concept ID queries
+  concept_id_expression <-
+    concepts %>%
+    filter(omop_variable != "concept_name" |
+             is.na(omop_variable)) %>%
+    reframe(
+      concept_id = glue("{variable_names$concept_id_var} IN (",
+                        glue_collapse(unique(concept_id), sep = ", "),
+                        ")")) %>%
+    pull(concept_id)
 
   # This collapsed list is used for string queries
   string_search_expression <-
     concepts %>%
-    # It's possible for strings to represent the same variable, so grouping here.
-    group_by(short_name) %>%
-    summarise(
-      concept_id = glue("LOWER({omop_variable}) LIKE '%",
-                        glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER({omop_variable}) LIKE '%"),
-                        "%'")) %>%
+    filter(omop_variable == "concept_name") %>%
+    distinct(omop_variable, concept_id) %>%
+    reframe(
+      concept_id =
+        glue("LOWER({omop_variable}) LIKE '% ",
+             glue_collapse(tolower(concept_id),
+                                 sep = "%' OR LOWER({omop_variable}) LIKE '%"),
+             "%'")) %>%
     pull(concept_id)
 
-  # If no concepts, I want no row returned. So I make the condition say 'where false'.
-  string_search_expression <- ifelse(nrow(concepts) != 0,
-                                     string_search_expression, "false")
-  string_search_expression
+
+  # Joining based on rows filled in.
+  if(length(concept_id_expression) > 0 &
+     length(string_search_expression) > 0){
+    combined_expression <- glue("{concept_id_expression} OR {string_search_expression}")
+  } else if (length(concept_id_expression) > 0){
+    combined_expression <- concept_id_expression
+  } else if (length(string_search_expression) > 0){
+    combined_expression <- string_search_expression
+  } else{
+    # If no concepts, I want no row returned. So I make the condition say 'where false'.
+    combined_expression <- "false"
+  }
+
+  combined_expression
 }
 
-#' Internal function called in `get_score_variables`.
-#' Builds the 'variable required' query for each table
-variables_query <- function(concepts, table_name,
-                                     concept_id_var_name,
-                                     value_as_concept_id_var = "",
-                                     table_id_var = ""){
+# Builds the CASE WHEN 'variable required' query for each table
+variables_query <- function(concepts,
+                             concept_id_var,
+                             table_id_var = ""){
 
   variables_required = ""
 
   # Numeric variables
   numeric_concepts <-
     concepts %>%
-    filter(table == table_name) %>%
     filter(omop_variable == "value_as_number") %>%
     #### GCS can sometimes be stored as a concept ID instead
     #### of a number. These need a separate query.
@@ -145,19 +165,19 @@ variables_query <- function(concepts, table_name,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       max_query = glue(
-        ", MAX(CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", MAX(CASE WHEN {concept_id_var} IN ({concept_id})
            {additional_filter_query}
                     THEN {omop_variable}
                END) AS max_{short_name}"
       ),
       min_query = glue(
-        ", MIN(CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", MIN(CASE WHEN {concept_id_var} IN ({concept_id})
            {additional_filter_query}
                     THEN {omop_variable}
                END) AS min_{short_name}"
       ),
       unit_query = glue(
-        ", MIN(CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", MIN(CASE WHEN {concept_id_var} IN ({concept_id})
            {additional_filter_query}
                     THEN c_unit.concept_name
                END) AS unit_{short_name}"
@@ -166,8 +186,7 @@ variables_query <- function(concepts, table_name,
   # Non-numeric variables if concept ID provided. Returns counts.
   non_numeric_concepts <-
     concepts %>%
-    filter(table == table_name &
-             (omop_variable == "value_as_concept_id" |
+    filter((omop_variable == "value_as_concept_id" |
                 is.na(omop_variable))) %>%
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
@@ -175,14 +194,8 @@ variables_query <- function(concepts, table_name,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue("'",
-                        glue_collapse(unique(concept_id), sep = "', '"),
-                        "'"),
-      concept_id_value = glue(
-        "'",
-        glue_collapse(concept_id_value, sep = "', '"),
-        "'"
-      ),
+      concept_id = glue_collapse(unique(concept_id), sep = ", "),
+      concept_id_value = glue_collapse(concept_id_value, sep = ", "),
       additional_filter_value = glue(
         "'",
         glue_collapse(additional_filter_value, sep = "', '"),
@@ -193,14 +206,14 @@ variables_query <- function(concepts, table_name,
     mutate(
       value_as_concept_id_query = if_else(
         omop_variable == "value_as_concept_id",
-        glue("AND {value_as_concept_id_var}
+        glue("AND value_as_concept_id
               IN ({concept_id_value})"), "", ""),
       additional_filter_query =
         if_else(!is.na(additional_filter_variable_name),
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN {concept_id_var_name} IN ({concept_id})
+        ", COUNT ( CASE WHEN {concept_id_var} IN ({concept_id})
            {value_as_concept_id_query}
            {additional_filter_query}
            THEN {table_id_var}
@@ -211,17 +224,16 @@ variables_query <- function(concepts, table_name,
   # Returns counts.
   non_numeric_string_search_concepts <-
     concepts %>%
-    filter(table == table_name &
-             omop_variable == "concept_name") %>%
+    filter(omop_variable == "concept_name") %>%
     # It's possible for strings to represent the same variable, so grouping here.
     group_by(short_name, additional_filter_variable_name) %>%
     summarise(
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue("LOWER({concept_id_var_name}) LIKE '%",
+      concept_id = glue("LOWER(t_w.concept_name) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER({concept_id_var_name}) LIKE '%"),
+                                      sep = "%' OR LOWER(t_w.concept_name) LIKE '%"),
                         "%'"),
       additional_filter_value = glue(
         "'",
@@ -243,28 +255,20 @@ variables_query <- function(concepts, table_name,
 
   # Collapsing the queries into strings.
   variables_required <-
-    glue(glue_collapse(numeric_concepts$max_query, sep = "\n"),
-         "\n",
-         glue_collapse(numeric_concepts$min_query, sep = "\n"),
-         "\n",
-         glue_collapse(numeric_concepts$unit_query, sep = "\n"),
-         "\n",
-         glue_collapse(non_numeric_concepts$count_query, sep = "\n"),
-         "\n",
-         glue_collapse(non_numeric_string_search_concepts$count_query, sep = "\n"),
-         "\n"
-         )
+    glue(glue_collapse(c(numeric_concepts$max_query,
+                         numeric_concepts$min_query,
+                         numeric_concepts$unit_query,
+                         non_numeric_concepts$count_query,
+                         non_numeric_string_search_concepts$count_query),
+                       sep = "\n"), "\n")
 
   # Return query
   variables_required
 }
 
-#' Internal function called in `get_score_variables`.
-#' Translates left lateral join between postgres and sql server.
+# Translates the left lateral join between postgres and sql server. for the drug table.
+# Needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
 translate_drug_join <- function(dialect){
-
-  # This translates the join for the drug table.
-  # This needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
 
   if (dialect == "postgresql"){
     drug_join <- glue(
@@ -291,4 +295,46 @@ translate_drug_join <- function(dialect){
 
   }
   drug_join
+}
+
+# Create join to the concept table to get unit of measure name
+units_of_measure_query <- function(table_name){
+  # Only applies to tables with numeric values
+  if(table_name %in% c("Measurement",
+                       "Observation")){
+    units_of_measure_query <- glue(
+      "
+      -- getting unit of measure for numeric variables.
+       LEFT JOIN @schema.concept c_unit ON t.unit_concept_id = c_unit.concept_id
+  	   AND t.unit_concept_id IS NOT NULL")
+  } else {
+    units_of_measure_query <- ""
+  }
+  units_of_measure_query
+}
+
+# Create list of all physiology variables which will be returned,
+# for the select statement in the main sql query.
+all_required_variables_query <- function(concepts){
+  all_required_variables <- concepts %>%
+    mutate(short_name =
+             case_when(omop_variable == "value_as_concept_id" |
+                         omop_variable == "concept_name" |
+                         is.na(omop_variable) ~
+                         glue("count_{short_name}"),
+                       omop_variable == "value_as_number" ~
+                         glue("min_{short_name}, max_{short_name},
+                              unit_{short_name}"))) %>%
+    distinct(short_name)
+
+  glue_collapse(all_required_variables$short_name, sep = ", ")
+
+}
+
+# Given a vector of table aliases, returns them
+# in a single comma separated string with a variable name pasted on.
+all_id_vars <- function(alias, string){
+  all_time_in_icu <- glue_collapse(
+    glue("{alias}.{string}"),
+    sep = ", ")
 }
