@@ -1,5 +1,7 @@
 with_query <- function(concepts, table_name, variable_names,
                            window_start_point, cadence){
+  # Constructs subqueries for every table except the drug one.
+
   # Variable names, and return empty string if no concepts required
   concepts <- concepts %>%
     filter(table == table_name) %>%
@@ -147,7 +149,10 @@ drug_with_query <- function(concepts, variable_names,
   drug_with_query
 }
 end_join_query <- function(table_name, variable_names, prev_alias){
+  # Constructs the segment that joins each 'with' subquery to other
+  # subqueries run before it.
 
+  # Reading variable names
   variable_names <- variable_names %>%
     filter(table == table_name)
 
@@ -174,10 +179,4 @@ end_join_query <- function(table_name, variable_names, prev_alias){
          ")
   }
   end_join_query
-}
-
-all_id_vars <- function(with_queries_per_table, string){
-  all_time_in_icu <- glue_collapse(
-    glue("{with_queries_per_table$alias}.{string}"),
-    sep = ", ")
 }

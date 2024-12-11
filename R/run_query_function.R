@@ -44,9 +44,9 @@
 #' If cadence is 1, the unit will be an hour, and so on.
 #' The columns returned will be named using the short_names specified in the `mapping_path` file
 #'
-#' @import DBI
 #' @import dplyr
-#' @importFrom glue glue glue_collapse
+#' @importFrom DBI dbGetQuery
+#' @importFrom glue glue glue_collapse single_quote
 #' @importFrom stringr str_detect
 #' @importFrom SqlRender translate render
 #' @importFrom readr read_file read_delim
@@ -175,10 +175,10 @@ get_score_variables <- function(conn, dialect, schema,
       age_query = age_query,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
-      all_time_in_icu = all_id_vars(end_join_queries, "time_in_icu"),
-      all_person_id = all_id_vars(end_join_queries, "person_id"),
-      all_visit_occurrence_id = all_id_vars(end_join_queries, "visit_occurrence_id"),
-      all_visit_detail_id = all_id_vars(end_join_queries, "visit_detail_id"),
+      all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),
+      all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
+      all_visit_occurrence_id = all_id_vars(end_join_queries$alias, "visit_occurrence_id"),
+      all_visit_detail_id = all_id_vars(end_join_queries$alias, "visit_detail_id"),
       all_required_variables = all_required_variables) %>%
     # Don't know why the translate function adds an unnecessary CAST statement to the dates.
     # So not translating that part.

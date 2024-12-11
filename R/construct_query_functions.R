@@ -33,12 +33,9 @@ omop_connect <-
     }
   }
 
-#' Internal function called in `get_score_variables`.
-#' Builds the windowing query based on variable names in each table.
+# Builds the 'time_in_icu' windowing query based on variable names in each table.
 window_query <- function(window_start_point, time_variable,
                          date_variable, cadence){
-
-  # Checking arguments
 
   # Checking arguments
   if (!(window_start_point %in% c("calendar_date", "icu_admission_time"))) {
@@ -63,8 +60,7 @@ window_query <- function(window_start_point, time_variable,
     glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable})) / ({cadence} * 60))"))
 }
 
-#' Internal function called in `get_score_variables`.
-#' Builds the age query
+# Builds the age query
 age_query <- function(age_method, dialect) {
 
   if (!(age_method %in% c("dob", "year_only"))) {
@@ -81,8 +77,9 @@ age_query <- function(age_method, dialect) {
     " YEAR(COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
                    vo.visit_start_datetime, vo.visit_start_date)) - p.year_of_birth AS age")
 }
-#' Internal function called in `get_score_variables`.
-#' Builds a regex for string searches
+
+# Builds the 'WHERE' query for the drug table, to ensure the generate_series SQL
+# function is only called for patients and timepoints with the drugs of interest.
 string_search_expression <- function(concepts,
                                      variable_names,
                                      table_name) {
@@ -134,8 +131,7 @@ string_search_expression <- function(concepts,
   combined_expression
 }
 
-#' Internal function called in `get_score_variables`.
-#' Builds the 'variable required' query for each table
+# Builds the CASE WHEN 'variable required' query for each table
 variables_query <- function(concepts,
                              concept_id_var,
                              table_id_var = ""){
@@ -270,12 +266,9 @@ variables_query <- function(concepts,
   variables_required
 }
 
-#' Internal function called in `get_score_variables`.
-#' Translates left lateral join between postgres and sql server.
+# Translates the left lateral join between postgres and sql server. for the drug table.
+# Needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
 translate_drug_join <- function(dialect){
-
-  # This translates the join for the drug table.
-  # This needs to be done in R, because the SQLRender package doesn't support the more complicated joins.
 
   if (dialect == "postgresql"){
     drug_join <- glue(
@@ -304,6 +297,7 @@ translate_drug_join <- function(dialect){
   drug_join
 }
 
+# Create join to the concept table to get unit of measure name
 units_of_measure_query <- function(table_name){
   # Only applies to tables with numeric values
   if(table_name %in% c("Measurement",
@@ -319,8 +313,9 @@ units_of_measure_query <- function(table_name){
   units_of_measure_query
 }
 
+# Create list of all physiology variables which will be returned,
+# for the select statement in the main sql query.
 all_required_variables_query <- function(concepts){
-  # This collapsed list is required for the main sql query.
   all_required_variables <- concepts %>%
     mutate(short_name =
              case_when(omop_variable == "value_as_concept_id" |
@@ -328,11 +323,18 @@ all_required_variables_query <- function(concepts){
                          is.na(omop_variable) ~
                          glue("count_{short_name}"),
                        omop_variable == "value_as_number" ~
-                         glue("min_{short_name}, max_{short_name}, unit_{short_name}"))) %>%
-    distinct(short_name) %>%
-    pull(.) %>%
-    toString(.) %>%
-    glue(",", .)
+                         glue("min_{short_name}, max_{short_name},
+                              unit_{short_name}"))) %>%
+    distinct(short_name)
 
-  all_required_variables
+  glue_collapse(all_required_variables$short_name, sep = ", ")
+
+}
+
+# Given a vector of table aliases, returns them
+# in a single comma separated string with a variable name pasted on.
+all_id_vars <- function(alias, string){
+  all_time_in_icu <- glue_collapse(
+    glue("{alias}.{string}"),
+    sep = ", ")
 }
