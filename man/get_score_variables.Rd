@@ -31,11 +31,12 @@ get_score_variables(
 \item{first_window}{An integer >= 0
 First timepoint (depending on cadence argument)
 since ICU admission to get physiology data for, starting with 0.
-Eg, if cadence is 24, 0 will be the first day. If cadence is 1, 0 will be the first hour.}
+Eg, if cadence is 24, 0 will be the first day. If cadence is 1, 0 will be the first hour.
+The filter is inclusive of the value specified.}
 
 \item{last_window}{An integer >= 0
-Last timepoint (depending on cadence argument)
-since ICU admission to get physiology data for.}
+Last timepoint (depending on cadence argument) since ICU admission
+to get physiology data for. The filter is inclusive of the value specified.}
 
 \item{severity_score}{A vector including the names of the severity scores to calculate.
 Currently supports "APACHE II" and "SOFA".
@@ -58,9 +59,9 @@ Option 1 (the default) uses the calendar date only, with day 0 being the date of
 If this option is chosen, cadence must be `24`.
 Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.}
 
-\item{start_datetime}{The earliest ICU admission date/datetime. Needs to be in character format.}
+\item{start_datetime}{The earliest ICU admission date/datetime. The filter is inclusive of the value specified. Needs to be in character format.}
 
-\item{end_datetime}{As above, but for last date}
+\item{end_datetime}{As above, but for last date. The filter is inclusive of the value specified.}
 
 \item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 Should match the example_concepts.tsv file format.}

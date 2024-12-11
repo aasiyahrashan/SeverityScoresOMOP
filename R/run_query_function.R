@@ -6,16 +6,17 @@
 #' @param dialect dialect A dialect supported by SQLRender
 #' @param schema The name of the schema you want to query.
 #' @param start_datetime
-#' The earliest ICU admission date/datetime. Needs to be in character format.
+#' The earliest ICU admission date/datetime. The filter is inclusive of the value specified. Needs to be in character format.
 #' @param end_datetime
-#' As above, but for last date
+#' As above, but for last date. The filter is inclusive of the value specified.
 #' @param first_window An integer >= 0
 #' First timepoint (depending on cadence argument)
 #' since ICU admission to get physiology data for, starting with 0.
 #' Eg, if cadence is 24, 0 will be the first day. If cadence is 1, 0 will be the first hour.
+#' The filter is inclusive of the value specified.
 #' @param last_window An integer >= 0
-#' Last timepoint (depending on cadence argument)
-#' since ICU admission to get physiology data for.
+#' Last timepoint (depending on cadence argument) since ICU admission
+#' to get physiology data for. The filter is inclusive of the value specified.
 #' @param mapping_path
 #' Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 #' Should match the example_concepts.tsv file format.
