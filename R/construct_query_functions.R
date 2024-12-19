@@ -90,11 +90,16 @@ string_search_expression <- function(concepts,
   variable_names <- variable_names %>%
     filter(table == table_name)
 
+  # Getting dataframes for each variable.
+  concept_ids_required <- concepts %>%
+    filter(omop_variable != "concept_name" |
+             is.na(omop_variable))
+  strings_required <- concepts %>%
+    filter(omop_variable == "concept_name")
+
   # Need a section for concept ID queries
   concept_id_expression <-
-    concepts %>%
-    filter(omop_variable != "concept_name" |
-             is.na(omop_variable)) %>%
+    concept_ids_required %>%
     reframe(
       concept_id = glue("{variable_names$concept_id_var} IN (",
                         glue_collapse(unique(concept_id), sep = ", "),
@@ -103,8 +108,7 @@ string_search_expression <- function(concepts,
 
   # This collapsed list is used for string queries
   string_search_expression <-
-    concepts %>%
-    filter(omop_variable == "concept_name") %>%
+    strings_required %>%
     distinct(omop_variable, concept_id) %>%
     reframe(
       concept_id =
@@ -116,12 +120,12 @@ string_search_expression <- function(concepts,
 
 
   # Joining based on rows filled in.
-  if(length(concept_id_expression) > 0 &
-     length(string_search_expression) > 0){
+  if(nrow(concept_ids_required) > 0 &
+     nrow(strings_required) > 0){
     combined_expression <- glue("{concept_id_expression} OR {string_search_expression}")
-  } else if (length(concept_id_expression) > 0){
+  } else if (nrow(concept_ids_required) > 0){
     combined_expression <- concept_id_expression
-  } else if (length(string_search_expression) > 0){
+  } else if (nrow(strings_required) > 0){
     combined_expression <- string_search_expression
   } else{
     # If no concepts, I want no row returned. So I make the condition say 'where false'.
@@ -327,7 +331,7 @@ all_required_variables_query <- function(concepts){
                               unit_{short_name}"))) %>%
     distinct(short_name)
 
-  glue_collapse(all_required_variables$short_name, sep = ", ")
+  glue(",", glue_collapse(all_required_variables$short_name, sep = ", "))
 
 }
 

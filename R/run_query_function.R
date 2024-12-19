@@ -46,7 +46,7 @@
 #' The columns returned will be named using the short_names specified in the `mapping_path` file
 #'
 #' @import dplyr
-#' @importFrom DBI dbGetQuery
+#' @importFrom DBI dbGetQuery dbDisconnect
 #' @importFrom glue glue glue_collapse single_quote
 #' @importFrom stringr str_detect
 #' @importFrom SqlRender translate render
