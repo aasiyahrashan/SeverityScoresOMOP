@@ -19,8 +19,10 @@ AS (
 	LEFT JOIN @schema.visit_detail vd
 		ON p.person_id = vd.person_id
 			AND vo.visit_occurrence_id = vd.visit_occurrence_id
-	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) >= @start_date
-		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) <= @end_date
+	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+	                vo.visit_start_datetime, vo.visit_start_date) >= @start_date
+		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
+		              vo.visit_start_datetime, vo.visit_start_date) <= @end_date
 
 	),
 

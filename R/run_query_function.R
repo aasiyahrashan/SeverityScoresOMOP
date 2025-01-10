@@ -114,15 +114,15 @@ get_score_variables <- function(conn, dialect, schema,
     raw_sql <-
       read_file(system.file("gcs_if_stored_as_concept.sql",
                             package = "SeverityScoresOMOP")) %>%
+      render(window_measurement = window_query(window_start_point,
+                                               "measurement_datetime",
+                                               "measurement_date", cadence)) %>%
+      translate(tolower(dialect)) %>%
       render(schema = schema,
              start_date = start_date,
              end_date = end_date,
              first_window = first_window,
-             last_window = last_window,
-             window_measurement = window_query(window_start_point,
-                                               "measurement_datetime",
-                                               "measurement_date", cadence)) %>%
-      translate(tolower(dialect))
+             last_window = last_window)
 
     # Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
@@ -190,9 +190,11 @@ get_score_variables <- function(conn, dialect, schema,
       schema = schema,
       start_date = start_date,
       end_date = end_date)
+  cat(raw_sql)
 
   #### Running the query
   data <- dbGetQuery(conn, raw_sql)
+
 
   ### Don't like joining here, but not much choice.
   if (nrow(gcs_concepts > 0)) {
