@@ -228,16 +228,16 @@ variables_query <- function(concepts,
   # Returns counts.
   non_numeric_string_search_concepts <-
     concepts %>%
-    filter(omop_variable == "concept_name") %>%
+    filter(omop_variable %in% c("concept_name", "concept_code")) %>%
     # It's possible for strings to represent the same variable, so grouping here.
     group_by(short_name, additional_filter_variable_name) %>%
     summarise(
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue("LOWER(t_w.concept_name) LIKE '%",
+      concept_id = glue("LOWER(t_w.{omop_variable}) LIKE '%",
                         glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER(t_w.concept_name) LIKE '%"),
+                                      sep = "%' OR LOWER(t_w.{omop_variable}) LIKE '%"),
                         "%'"),
       additional_filter_value = glue(
         "'",

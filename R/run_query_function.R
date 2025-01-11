@@ -96,7 +96,7 @@ get_score_variables <- function(conn, dialect, schema,
 
   # Making sure that string search concepts don't have extra filters.
   if(any(!is.na(concepts %>%
-                filter(omop_variable == "concept_name") %>%
+                filter(omop_variable %in% c("concept_name", "concept_code")) %>%
                 pull(concept_id_value)))) {
     stop("A line with `omop_variable` set to `concept_name` has concept_id_value filled in.
          Either delete the value in `concept_id_value`, or change the `omop_variable` to
@@ -190,9 +190,9 @@ get_score_variables <- function(conn, dialect, schema,
       schema = schema,
       start_date = start_date,
       end_date = end_date)
-  cat(raw_sql)
 
   #### Running the query
+  cat(raw_sql)
   data <- dbGetQuery(conn, raw_sql)
 
 
