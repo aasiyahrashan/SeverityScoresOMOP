@@ -124,6 +124,7 @@ drug_with_query <- function(concepts, variable_names,
           ,t.drug_exposure_id
           ,t.drug_concept_id
           ,c.concept_name
+          ,c.concept_code
           ,{window_start} as drug_start
           ,{window_end} as drug_end
           FROM icu_admission_details adm

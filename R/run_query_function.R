@@ -98,7 +98,8 @@ get_score_variables <- function(conn, dialect, schema,
   if(any(!is.na(concepts %>%
                 filter(omop_variable %in% c("concept_name", "concept_code")) %>%
                 pull(concept_id_value)))) {
-    stop("A line with `omop_variable` set to `concept_name` has concept_id_value filled in.
+    stop("A line with `omop_variable` set to `concept_name` or `concept_code`
+    has concept_id_value filled in.
          Either delete the value in `concept_id_value`, or change the `omop_variable` to
          something that contains a concept_id")
   }

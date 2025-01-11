@@ -92,10 +92,10 @@ string_search_expression <- function(concepts,
 
   # Getting dataframes for each variable.
   concept_ids_required <- concepts %>%
-    filter(omop_variable != "concept_name" |
+    filter(!omop_variable %in% c("concept_name", "concept_code") |
              is.na(omop_variable))
   strings_required <- concepts %>%
-    filter(omop_variable == "concept_name")
+    filter(omop_variable %in% c("concept_name", "concept_code"))
 
   # Need a section for concept ID queries
   concept_id_expression <-
@@ -230,7 +230,7 @@ variables_query <- function(concepts,
     concepts %>%
     filter(omop_variable %in% c("concept_name", "concept_code")) %>%
     # It's possible for strings to represent the same variable, so grouping here.
-    group_by(short_name, additional_filter_variable_name) %>%
+    group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
@@ -252,7 +252,7 @@ variables_query <- function(concepts,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN {concept_id}
+        ", COUNT ( CASE WHEN LOWER(t_w.{omop_variable}) LIKE '%{concept_id}%'
            {additional_filter_query}
            THEN {table_id_var}
            END ) AS count_{short_name}"))
@@ -322,8 +322,9 @@ units_of_measure_query <- function(table_name){
 all_required_variables_query <- function(concepts){
   all_required_variables <- concepts %>%
     mutate(short_name =
-             case_when(omop_variable == "value_as_concept_id" |
-                         omop_variable == "concept_name" |
+             case_when(omop_variable %in%
+                         c("value_as_concept_id",
+                           "concept_name", "concept_code") |
                          is.na(omop_variable) ~
                          glue("count_{short_name}"),
                        omop_variable == "value_as_number" ~
