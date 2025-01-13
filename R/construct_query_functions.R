@@ -235,10 +235,8 @@ variables_query <- function(concepts,
       # This is slightly odd, but just makes sure we don't duplicate concept
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
-      concept_id = glue("LOWER(t_w.{omop_variable}) LIKE '%",
-                        glue_collapse(tolower(unique(concept_id)),
-                                      sep = "%' OR LOWER(t_w.{omop_variable}) LIKE '%"),
-                        "%'"),
+      concept_id = glue_collapse(tolower(unique(concept_id)),
+                                      sep = glue("%' OR LOWER(t_w.{omop_variable}) LIKE '%")),
       additional_filter_value = glue(
         "'",
         glue_collapse(additional_filter_value, sep = "', '"),
