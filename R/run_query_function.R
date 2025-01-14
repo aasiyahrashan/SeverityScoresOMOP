@@ -108,6 +108,9 @@ get_score_variables <- function(conn, dialect, schema,
   gcs_concepts <- concepts %>%
     filter((short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
               omop_variable == "value_as_concept_id"))
+  concepts <- concepts %>%
+    filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
+              omop_variable == "value_as_concept_id"))
 
   if (nrow(gcs_concepts > 0)) {
     # The SQL file currently has the GCS LOINC concepts hardcoded.
