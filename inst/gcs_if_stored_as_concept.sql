@@ -53,8 +53,19 @@ AS (
 	INNER JOIN @schema.measurement t
 		-- making sure the visits match up, and filtering by number of days in ICU
 		ON adm.person_id = t.person_id
-			AND adm.visit_occurrence_id = t.visit_occurrence_id
-			AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  	-- Visit occurrence is not always linked to the other tables.
+  	-- So joining by time instead.
+  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
+  	      OR ((t.visit_occurrence_id IS NULL)
+  	          AND (coalesce(t.measurement_datetime, t.measurement_date) >= adm.icu_admission_datetime)
+  	          AND (coalesce(t.measurement_datetime, t.measurement_date) < adm.icu_discharge_datetime)))
+  	-- Visit detail ID is not available at all in CCHIC.
+  	AND (adm.visit_detail_id = t.visit_detail_id
+  	      OR adm.visit_detail_id IS NULL
+  	      --- Dealing with case where visit detail ID is not included in other table.
+  	      OR ((t.visit_detail_id IS NULL)
+  	          AND (coalesce(t.measurement_datetime, t.measurement_date) >= adm.icu_admission_datetime)
+  	          AND (coalesce(t.measurement_datetime, t.measurement_date) < adm.icu_discharge_datetime)))
 			AND @window_measurement >= '@first_window'
 			AND @window_measurement <= '@last_window'
 	--- Making sure we get gcs values only. The variables become null otherwise.

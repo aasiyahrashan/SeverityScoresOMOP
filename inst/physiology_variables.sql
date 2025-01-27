@@ -13,6 +13,8 @@ AS (
 		,vd.visit_detail_id
 		,COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
 		vo.visit_start_datetime, vo.visit_start_date) AS icu_admission_datetime
+		,COALESCE(vd.visit_detail_end_datetime, vd.visit_detail_end_date,
+		vo.visit_end_datetime, vo.visit_end_date) AS icu_discharge_datetime
 	FROM @schema.person p
 	INNER JOIN @schema.visit_occurrence vo
 	ON p.person_id = vo.person_id
@@ -30,14 +32,17 @@ AS (
 
 @all_with_queries
 
-SELECT adm.*
-           ,COALESCE(@all_time_in_icu) AS time_in_icu
-           @all_required_variables
+SELECT adm.person_id
+       ,adm.visit_occurrence_id
+       ,adm.visit_detail_id
+       ,adm.age
+       ,adm.gender
+       ,adm.icu_admission_datetime
+       ,COALESCE(@all_time_in_icu) AS time_in_icu
+       @all_required_variables
       @all_end_join_queries
       -- Admission information needs to be included, even if there are no physiology values
       RIGHT JOIN icu_admission_details adm
       ON COALESCE(@all_person_id) = adm.person_id
-      AND COALESCE(@all_visit_occurrence_id) = adm.visit_occurrence_id
-      AND (COALESCE(@all_visit_detail_id) = adm.visit_detail_id
-            OR adm.visit_detail_id IS NULL)
+      AND COALESCE(@all_icu_admission_datetime) = adm.icu_admission_datetime
       WHERE COALESCE(@all_time_in_icu) IS NOT NULL

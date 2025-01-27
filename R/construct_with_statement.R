@@ -41,16 +41,28 @@ with_query <- function(concepts, table_name, variable_names,
     , {variable_names$alias} as (
     SELECT
      t.person_id
-    ,t.visit_occurrence_id
-    ,t.visit_detail_id
+     -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
+     -- So not selecting them. Identifying visits by person ID + admission time
+     ,adm.icu_admission_datetime
   	,{window} as time_in_icu
      {variables}
     FROM icu_admission_details adm
     INNER JOIN @schema.{variable_names$db_table_name} t
     -- making sure the visits match up, and filtering by number of days in ICU
   	ON adm.person_id = t.person_id
-  	AND adm.visit_occurrence_id = t.visit_occurrence_id
-  	AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+  	-- Visit occurrence is not always linked to the other tables.
+  	-- So joining by time instead.
+  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
+  	      OR ((t.visit_occurrence_id IS NULL)
+  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.icu_admission_datetime)
+  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.icu_discharge_datetime)))
+  	-- Visit detail ID is not available at all in CCHIC.
+  	AND (adm.visit_detail_id = t.visit_detail_id
+  	      OR adm.visit_detail_id IS NULL
+  	      --- Dealing with case where visit detail ID is not included in other table.
+  	      OR ((t.visit_detail_id IS NULL)
+  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.icu_admission_datetime)
+  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.icu_discharge_datetime)))
   	AND {window} >= @first_window
   	AND {window} <= @last_window
     {units_of_measure_query}
@@ -59,8 +71,7 @@ with_query <- function(concepts, table_name, variable_names,
     INNER JOIN @schema.concept t_w
     ON t_w.concept_id = t.{variable_names$concept_id_var}
     GROUP BY t.person_id
-  	,t.visit_occurrence_id
-  	,t.visit_detail_id
+    ,adm.icu_admission_datetime
   	,{window} )
          ")
   with_query
@@ -111,16 +122,16 @@ drug_with_query <- function(concepts, variable_names,
       --- the drug will be double counted.
       SELECT
           t_w.person_id
-          ,t_w.visit_occurrence_id
-          ,t_w.visit_detail_id
+           -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
+           -- So not selecting them. Identifying visits by person ID + admission time
+          ,t_w.icu_admission_datetime
           ,time_in_icu
           {variables}
       --- Filtering whole table for string matches so don't need to lateral join the whole thing
       FROM (
           SELECT
           adm.person_id
-          ,adm.visit_occurrence_id
-          ,adm.visit_detail_id
+          ,adm.icu_admission_datetime
           ,t.drug_exposure_id
           ,t.drug_concept_id
           ,c.concept_name
@@ -130,8 +141,19 @@ drug_with_query <- function(concepts, variable_names,
           FROM icu_admission_details adm
           INNER JOIN @schema.drug_exposure t
           ON adm.person_id = t.person_id
-          AND adm.visit_occurrence_id = t.visit_occurrence_id
-          AND (adm.visit_detail_id = t.visit_detail_id OR adm.visit_detail_id IS NULL)
+            	-- Visit occurrence is not always linked to the other tables.
+  	-- So joining by time instead.
+  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
+  	      OR ((t.visit_occurrence_id IS NULL)
+  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
+  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
+  	-- Visit detail ID is not available at all in CCHIC.
+  	AND (adm.visit_detail_id = t.visit_detail_id
+  	      OR adm.visit_detail_id IS NULL
+  	      --- Dealing with case where visit detail ID is not included in other table.
+  	      OR ((t.visit_detail_id IS NULL)
+  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
+  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
           AND ({window_start} >= @first_window OR {window_end} >= @first_window)
           AND ({window_start} <= @last_window OR {window_end} <= @last_window)
           INNER JOIN @schema.concept c
@@ -141,8 +163,7 @@ drug_with_query <- function(concepts, variable_names,
       {drug_join}
       GROUP BY
       t_w.person_id
-      ,t_w.visit_occurrence_id
-      ,t_w.visit_detail_id
+      ,t_w.icu_admission_datetime
       ,time_in_icu
       )
          ")
@@ -160,8 +181,7 @@ end_join_query <- function(table_name, variable_names, prev_alias){
   # Getting strings for coalesce
   time_in_icu <- gsub("placeholder", "time_in_icu", prev_alias)
   person_id <- gsub("placeholder", "person_id", prev_alias)
-  visit_occurrence_id <- gsub("placeholder", "visit_occurrence_id", prev_alias)
-  visit_detail_id <- gsub("placeholder", "visit_detail_id", prev_alias)
+  icu_admission_datetime <- gsub("placeholder", "icu_admission_datetime", prev_alias)
 
   # The first table is just a from statement
   if(is.na(prev_alias)) {
@@ -171,9 +191,7 @@ end_join_query <- function(table_name, variable_names, prev_alias){
       glue("
     FULL JOIN {variable_names$alias}
         ON COALESCE({person_id}) = {variable_names$alias}.person_id
-       AND COALESCE({visit_occurrence_id}) = {variable_names$alias}.visit_occurrence_id
-       AND (COALESCE({visit_detail_id}) = {variable_names$alias}.visit_detail_id OR
-            COALESCE({visit_detail_id}) IS NULL)
+       AND COALESCE({icu_admission_datetime}) = {variable_names$alias}.icu_admission_datetime
        AND COALESCE({time_in_icu}) = {variable_names$alias}.time_in_icu
        AND {variable_names$alias}.time_in_icu >= @first_window
 			 AND {variable_names$alias}.time_in_icu <= @last_window

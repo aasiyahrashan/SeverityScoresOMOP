@@ -179,8 +179,7 @@ get_score_variables <- function(conn, dialect, schema,
       all_end_join_queries = all_end_join_queries,
       all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),
       all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
-      all_visit_occurrence_id = all_id_vars(end_join_queries$alias, "visit_occurrence_id"),
-      all_visit_detail_id = all_id_vars(end_join_queries$alias, "visit_detail_id"),
+      all_icu_admission_datetime = all_id_vars(end_join_queries$alias, "icu_admission_datetime"),
       all_required_variables = all_required_variables) %>%
     # Don't know why the translate function adds an unnecessary CAST statement to the dates.
     # So not translating that part.
