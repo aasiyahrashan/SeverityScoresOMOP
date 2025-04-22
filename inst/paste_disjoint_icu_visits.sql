@@ -19,21 +19,21 @@ WITH lagged_visit_details AS (
       ORDER BY visit_detail_start_datetime
     ) AS prev_end
   FROM @schema.visit_detail
-	where visit_detail_concept_id = '581379'
+  WHERE visit_detail_concept_id = 581379
 ),
 grouped_visits AS (
   SELECT *,
     SUM(CASE
-		WHEN visit_detail_start_datetime - prev_end < INTERVAL '1 hour' THEN 0
+          WHEN DATEDIFF(MINUTE, prev_end, visit_detail_start_datetime) < 60 THEN 0
           ELSE 1
         END) OVER (
           PARTITION BY person_id, visit_detail_concept_id
           ORDER BY visit_detail_start_datetime
-          ROWS UNBOUNDED PRECEDING
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS group_id
   FROM lagged_visit_details
 ),
-relabled_visit_details AS (
+relabeled_visit_details AS (
   SELECT
     *,
     MIN(visit_detail_start_datetime) OVER (
@@ -48,13 +48,13 @@ relabled_visit_details AS (
   FROM grouped_visits
 )
 
-select
-person_id,
-new_visit_detail_id,
-new_visit_detail_start_datetime,
-new_visit_detail_end_datetime,
-visit_detail_start_datetime,
-visit_detail_end_datetime,
-visit_detail_source_value
-FROM relabled_visit_details
-order by person_id, new_visit_detail_start_datetime
+SELECT
+  person_id,
+  new_visit_detail_id,
+  new_visit_detail_start_datetime,
+  new_visit_detail_end_datetime,
+  visit_detail_start_datetime,
+  visit_detail_end_datetime,
+  visit_detail_source_value
+FROM relabeled_visit_details
+ORDER BY person_id, new_visit_detail_start_datetime;
