@@ -1,6 +1,6 @@
 WITH
 -- The queries for most tables are constructed in the R code and added here via the @ parameters.
--- The OMOP visit_detail table sometimes splits what should be continuous visits into multiple rows,
+-- The OMOP visit_detail table in CCHIC sometimes splits what should be continuous visits into multiple rows,
 -- even when the end time of one visit is exactly the same as the start time of the next.
 -- This query "stitches" those visits back together when:
 ---  - the visit_detail_concept_id is 581379, representing an ICU stay
@@ -79,6 +79,7 @@ AS (
 		--- Some databases don't have month/day of birth. Others don't have birth datetime.
 		--- Imputing DOB as the middle of the year if no further information is available.
 		--- Also, not all databases have datetimes, so we have to impute the date as midnight.
+		--- DO AGE QUERY ELSEWHERE, SINCE IT"S POSSIBLE FOR IT TO CHANGE OVER VISITS"
 		,@age_query
 		,c_gender.concept_name AS gender
 		,vo.visit_occurrence_id

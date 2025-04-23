@@ -38,21 +38,20 @@ with_query <- function(concepts, table_name, variable_names,
   # Constructing main query
   with_query <-
     glue("
-    , {variable_names$alias} as (
-    ----- Doing two separate select queries and getting the union.
-    ----- The first handles the case where visit detail ID does not exist in the clincical data table
-    ----- So I join it to the admission details table which has one row per *pasted* visit (Broken visits made continuous)
-    ----- The second select uses the un-duplicated admisison information table to join to visit detail IDs
-    ----- which already exist in the clincial data table.
+    , {variable_names$alias}_non_aggregated as (
     SELECT
-     t.person_id
-     -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
-     -- So not selecting them. Identifying visits by person ID + admission time
+     t.*
      ,adm.icu_admission_datetime
   	,{window} as time_in_icu
-     {variables}
-     FROM @schema.{variable_names$db_table_name} t
-     INNER JOIN icu_admission_details adm
+  	--- The admission details table has multiple rows per pasted visit detail.
+  	--- So if visit_detail_id is null in either table, the time join returns multiple identical rows.
+  	--- Making sure I only get one row back at the end, here. The variable I order by does not matter.
+  	, ROW_NUMBER() OVER (
+      PARTITION BY t.{variable_names$id_var}
+      ORDER BY t.person_id
+    ) AS rn
+     FROM icu_admission_details_multiple_visits adm
+     INNER JOIN @schema.{variable_names$db_table_name} t
     -- making sure the visits match up, and filtering by number of days in ICU
   	ON adm.person_id = t.person_id
   	-- Visit occurrence is not always linked to the other tables.
@@ -63,53 +62,36 @@ with_query <- function(concepts, table_name, variable_names,
   	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.icu_discharge_datetime)))
   	-- Visit details can either not exist for the patient (missing in the adm table),
   	-- or not be linked to the clincial data table (missing in the 't' table)
-  	AND (adm.visit_detail_id IS NULL
+  	AND (adm.visit_detail_id = t.visit_detail_id
+  	     OR adm.visit_detail_id IS NULL
   	      --- Dealing with case where visit detail ID is not included in other table.
   	      OR ((t.visit_detail_id IS NULL)
   	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.icu_admission_datetime)
   	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.icu_discharge_datetime)))
   	AND {window} >= @first_window
   	AND {window} <= @last_window
-    {units_of_measure_query}
-    -- For string searching by concept name if required
-    -- Slightly odd alias, but using it to match drug table
-    INNER JOIN @schema.concept t_w
-    ON t_w.concept_id = t.{variable_names$concept_id_var}
-    GROUP BY t.person_id
-    ,adm.icu_admission_datetime
-  	,{window}
-  	---- Second select statement for cases where the visit detail exists in the clincal data table
-  	UNION ALL
-  	SELECT
-     t.person_id
-     -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
-     -- So not selecting them. Identifying visits by person ID + admission time
-     ,adm.icu_admission_datetime
-  	,{window} as time_in_icu
-     {variables}
-     FROM @schema.{variable_names$db_table_name} t
-     INNER JOIN icu_admission_details_multiple_visits adm
-    -- making sure the visits match up, and filtering by number of days in ICU
-  	ON adm.person_id = t.person_id
-  	-- Visit occurrence is not always linked to the other tables.
-  	-- So joining by time instead.
-  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
-  	      OR ((t.visit_occurrence_id IS NULL)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.icu_discharge_datetime)))
-  	AND adm.visit_detail_id = t.visit_detail_id
-  	AND {window} >= @first_window
-  	AND {window} <= @last_window
-    {units_of_measure_query}
-    -- For string searching by concept name if required
-    -- Slightly odd alias, but using it to match drug table
-    INNER JOIN @schema.concept t_w
-    ON t_w.concept_id = t.{variable_names$concept_id_var}
-    GROUP BY t.person_id
-    ,adm.icu_admission_datetime
-  	,{window}
   	)
-         ")
+  	, {variable_names$alias} as (
+  	--- selecting non-duplicated values and aggregating
+  	SELECT
+  	t.person_id
+  	-- can't rely on visit occurrence and visit detail IDs being linked to these tables.
+    -- So not selecting them. Identifying visits by person ID + admission time
+  	,t.icu_admission_datetime
+  	,t.time_in_icu
+    {variables}
+    FROM {variable_names$alias}_non_aggregated as t
+    {units_of_measure_query}
+    -- For string searching by concept name if required
+    -- Slightly odd alias, but using it to match drug table
+    INNER JOIN @schema.concept t_w
+    ON t_w.concept_id = t.{variable_names$concept_id_var}
+    WHERE rn = 1
+    GROUP BY t.person_id
+    ,t.icu_admission_datetime
+  	,t.time_in_icu
+  	)
+     ")
   with_query
 }
 
@@ -165,6 +147,8 @@ drug_with_query <- function(concepts, variable_names,
           {variables}
       --- Filtering whole table for string matches so don't need to lateral join the whole thing
       FROM (
+          SELECT *
+          FROM (
           SELECT
           adm.person_id
           ,adm.icu_admission_datetime
@@ -172,76 +156,40 @@ drug_with_query <- function(concepts, variable_names,
           ,t.drug_concept_id
           ,c.concept_name
           ,c.concept_code
-          ,{window_start} as drug_start
-          ,{window_end} as drug_end
-          FROM icu_admission_details adm
-          INNER JOIN @schema.drug_exposure t
-          ON adm.person_id = t.person_id
-            	-- Visit occurrence is not always linked to the other tables.
-  	-- So joining by time instead.
-  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
-  	      OR ((t.visit_occurrence_id IS NULL)
-  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
-  	-- Visit detail ID can either be completely missing for the patient (missing in adm table),
-  	-- or just not be linked to the drug table. Missing in the 't' table.
-  	AND (adm.visit_detail_id IS NULL
-  	      --- Dealing with case where visit detail ID is not included in other table.
-  	      OR ((t.visit_detail_id IS NULL)
-  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
-          AND ({window_start} >= @first_window OR {window_end} >= @first_window)
-          AND ({window_start} <= @last_window OR {window_end} <= @last_window)
-          INNER JOIN @schema.concept c
-          ON c.concept_id = t.drug_concept_id
-          WHERE {string_search_expression}
-      ) t_w
-      {drug_join}
-      GROUP BY
-      t_w.person_id
-      ,t_w.icu_admission_datetime
-      ,time_in_icu
-
-      --- Dealing with the situation where visit detail is recorded in the drug table
-      UNION ALL
-            --- Note, this query will double count overlaps.
-      --- If a person has two versions of a single drug, with overalapping start and end dates,
-      --- the drug will be double counted.
-      SELECT
-          t_w.person_id
-           -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
-           -- So not selecting them. Identifying visits by person ID + admission time
-          ,t_w.icu_admission_datetime
-          ,time_in_icu
-          {variables}
-      --- Filtering whole table for string matches so don't need to lateral join the whole thing
-      FROM (
-          SELECT
-          adm.person_id
-          ,adm.icu_admission_datetime
-          ,t.drug_exposure_id
-          ,t.drug_concept_id
-          ,c.concept_name
-          ,c.concept_code
+          --- The admission details table has multiple rows per pasted visit detail.
+          --- So if visit_detail_id is null in either table, the time join returns multiple identical rows.
+        	--- Making sure I only get one row back at the end, here. The variable I order by does not matter.
+          ,ROW_NUMBER() OVER (
+              PARTITION BY t.drug_exposure_id
+              ORDER BY t.person_id
+            ) AS rn
           ,{window_start} as drug_start
           ,{window_end} as drug_end
           FROM icu_admission_details_multiple_visits adm
           INNER JOIN @schema.drug_exposure t
           ON adm.person_id = t.person_id
-    -- Visit occurrence is not always linked to the other tables.
-  	-- So joining by time instead.
-  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
-  	      OR ((t.visit_occurrence_id IS NULL)
-  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
-  	-- Visit detail ID is not available at all in CCHIC.
-  	AND (adm.visit_detail_id = t.visit_detail_id
-          AND ({window_start} >= @first_window OR {window_end} >= @first_window)
-          AND ({window_start} <= @last_window OR {window_end} <= @last_window)
+          -- Visit occurrence is not always linked to the other tables.
+        	-- So joining by time instead.
+        	AND (adm.visit_occurrence_id = t.visit_occurrence_id
+        	      OR ((t.visit_occurrence_id IS NULL)
+        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
+        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
+        	-- Visit detail ID can either be completely missing for the patient (missing in adm table),
+        	-- or just not be linked to the drug table. Missing in the 't' table.
+        	AND (adm.visit_detail_id = t.visit_detail_id
+        	      OR adm.visit_detail_id IS NULL
+        	      --- Dealing with case where visit detail ID is not included in other table.
+        	      OR ((t.visit_detail_id IS NULL)
+        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
+        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
+                AND ({window_start} >= @first_window OR {window_end} >= @first_window)
+                AND ({window_start} <= @last_window OR {window_end} <= @last_window)
           INNER JOIN @schema.concept c
           ON c.concept_id = t.drug_concept_id
           WHERE {string_search_expression}
-      ) t_w
+      ) base
+      --- selecting non-duplicated values
+      WHERE rn = 1) t_w
       {drug_join}
       GROUP BY
       t_w.person_id
