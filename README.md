@@ -1,10 +1,9 @@
 ## Installation instructions
-- Use `devtools::install_github("aasiyahrashan/SeverityScoresOMOP", auth_token = "your_PAT")`
-- The personal access token is necessary, since this is currently a private repository
+- Use `devtools::install_github("aasiyahrashan/SeverityScoresOMOP")`
 
 #### This package reads in data from OMOP to calculate the APACHE II and SOFA scores. 
 #### It also provides a convenient method of reading in other variables summarised into time windows.
-- Works on databases in the OMOP CDM format version 5.4. 
+- Works on databases in the OMOP CDM format version 5.4 (See more detailed requirements regarding data format below). 
 - Depends on the OHDSI SqlRender package, https://github.com/OHDSI/SqlRender, which can have quite limited translations between SQL dialects.
 - I've only used this package with SQLServer and PostgreSQL. Most of the code was tested on Postgres only.
 - Copy the `inst/example_concepts.csv` file. 
@@ -60,7 +59,7 @@
     get_physiology_variable_distributions(data)
 ````
 
-#### Format for the csv file.
+#### Format for the csv file
 The file specifies the OMOP concept codes which correspond to each variable. Entries here determine how the data is read in	
 I suggest adding the file to your project version control.
 	
@@ -77,7 +76,14 @@ Description of variables:
 - additional_filter_variable_nameP	Option to add an extra filter (usually by source name). This specifies the values to filter by. If there are multiple values, use more than one row.
 - Note:	For readability only, not used in the code.
 
-
+#### Requirements for the OMOP database
+- Needs to be a valid OMOP version 5.4 database
+- The Person, Visit Occurrence and Visit Detail tables need to be filled in.
+- Visit Occurrence should represent a hospital stay. Visit Detail can either represent an ICU/Ward say, or it can represent bed/room moves.
+- Visit Details which correspond to ICU care *must* have the `visit_detail_concept_id` set to `581379 - Inpatient Critical Care Facility`,
+since that's the variable used to determine if the patient was in ICU.
+- ICU Visit details which have a gap of <6 hours between them are 'pasted' together by default into a single ICU stay.
+- This is to prevent bed moves, or moves to scanners, etc from breaking up an ICU visit. 
 
 #### TODO
 - Adapt the SQL queries to work for OMOP 5.3.1
@@ -87,5 +93,3 @@ Description of variables:
 - Fix unit conversion and implausible values functions to prevent code being duplicated between scores.
 - Include vasopressors in SOFA calculation.
 - Handle case where there is more than one unit of measure per person, variable and time.
-
-

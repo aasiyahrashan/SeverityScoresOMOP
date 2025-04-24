@@ -74,7 +74,6 @@ renamed_visit_details AS (
 --- Therefore, there can be more than one row per pasted visit detail.
 icu_admission_details_multiple_visits
 AS (
-	--- We generally want ICU admission information, but will use hospital admisison info if necessary.
 	SELECT p.person_id
 		--- Some databases don't have month/day of birth. Others don't have birth datetime.
 		--- Imputing DOB as the middle of the year if no further information is available.
@@ -85,23 +84,19 @@ AS (
 		,vo.visit_occurrence_id
 		,vd.visit_detail_id
 		,vd.new_visit_detail_id
-		,COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
-		vo.visit_start_datetime, vo.visit_start_date) AS icu_admission_datetime
-		,COALESCE(vd.visit_detail_end_datetime, vd.visit_detail_end_date,
-		vo.visit_end_datetime, vo.visit_end_date) AS icu_discharge_datetime
+		,COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) AS icu_admission_datetime
+		,COALESCE(vd.visit_detail_end_datetime, vd.visit_detail_end_date) AS icu_discharge_datetime
 	FROM @schema.person p
 	INNER JOIN @schema.visit_occurrence vo
 	ON p.person_id = vo.person_id
-	-- this should contain ICU stay information, if it exists at all
-	LEFT JOIN renamed_visit_details vd
+	-- this table has been filtered to include ICU stays only
+	INNER JOIN renamed_visit_details vd
 	ON vo.visit_occurrence_id = vd.visit_occurrence_id
 	-- gender concept
 	INNER JOIN @schema.concept c_gender
 	ON p.gender_concept_id = c_gender.concept_id
-	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
-	                vo.visit_start_datetime, vo.visit_start_date) >= @start_date
-		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
-		              vo.visit_start_datetime, vo.visit_start_date) <= @end_date
+	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= @start_date
+		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= @end_date
 	),
 	--- De-duplicating, but without the original visit detail IDs
 	icu_admission_details as (
