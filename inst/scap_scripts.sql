@@ -104,16 +104,25 @@ AS (
 	),
 	--- De-duplicating, but without the original visit detail IDs
 	icu_admission_details as (
-	select distinct
-	person_id
-	,age
-	,gender
-	,visit_occurrence_id
-	--- don't like this, because it's confusing. But leaving for now.
-	,new_visit_detail_id visit_detail_id
-	,icu_admission_datetime
-	,icu_discharge_datetime
-	from icu_admission_details_multiple_visits
+		SELECT
+		d.person_id,
+		@age_query
+		c.concept_name AS gender,
+		d.visit_occurrence_id,
+		d.new_visit_detail_id AS visit_detail_id,
+		d.icu_admission_datetime,
+		d.icu_discharge_datetime
+	FROM (
+		SELECT DISTINCT
+			person_id,
+			visit_occurrence_id,
+			new_visit_detail_id,
+			icu_admission_datetime,
+			icu_discharge_datetime
+		FROM icu_admission_details_multiple_visits
+	) d
+	INNER JOIN hic_cc_004.person p ON d.person_id = p.person_id
+	INNER JOIN hic_cc_004.concept c ON p.gender_concept_id = c.concept_id
 	)
 
 	select * from icu_admission_details

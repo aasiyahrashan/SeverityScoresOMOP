@@ -82,6 +82,7 @@ Description of variables:
 - Visit Occurrence should represent a hospital stay. Visit Detail can either represent an ICU/Ward say, or it can represent bed/room moves.
 - Visit Details which correspond to ICU care *must* have the `visit_detail_concept_id` set to `581379 - Inpatient Critical Care Facility`,
 since that's the variable used to determine if the patient was in ICU.
+- Eaach row in the Visit Detail table has the `visit_occurrence_id` filled in.
 - ICU Visit details which have a gap of <6 hours between them are 'pasted' together by default into a single ICU stay.
 - This is to prevent bed moves, or moves to scanners, etc from breaking up an ICU visit. 
 
