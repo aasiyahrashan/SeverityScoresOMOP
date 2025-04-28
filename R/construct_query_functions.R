@@ -71,9 +71,8 @@ age_query <- function(age_method, dialect) {
     age_method == "dob",
     " DATEDIFF(yyyy,
 			  COALESCE(birth_datetime, DATEFROMPARTS(year_of_birth, COALESCE(month_of_birth, '06'),
-          COALESCE(day_of_birth, '01'))),
-			  COALESCE(visit_detail_start_datetime, visit_detail_start_date)) as age",
-    " YEAR(COALESCE(visit_detail_start_datetime, visit_detail_start_date)) - year_of_birth AS age")
+          COALESCE(day_of_birth, '01'))), icu_admission_datetime) as age",
+    " YEAR(icu_admission_datetime) - year_of_birth AS age")
 }
 
 # Builds the 'WHERE' query for the drug table, to ensure the generate_series SQL

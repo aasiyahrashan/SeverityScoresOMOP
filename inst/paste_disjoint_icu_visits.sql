@@ -1,4 +1,5 @@
--- The OMOP visit_detail table sometimes splits what should be continuous visits into multiple rows,
+-- The queries for most tables are constructed in the R code and added here via the @ parameters.
+-- The OMOP visit_detail table in CCHIC sometimes splits what should be continuous visits into multiple rows,
 -- even when the end time of one visit is exactly the same as the start time of the next.
 -- This query "stitches" those visits back together when:
 ---  - the visit_detail_concept_id is 581379, representing an ICU stay
@@ -11,7 +12,7 @@
 --   - new_end_datetime: the latest end datetime in the group
 --
 -- You can use these new values to consistently group related visit_detail records across clinical data tables.
-WITH lagged_visit_details AS (
+lagged_visit_details AS (
   SELECT
     *,
     LAG(visit_detail_end_datetime) OVER (
@@ -67,6 +68,43 @@ renamed_visit_details AS (
   new_visit_detail_start_date visit_detail_start_date,
   new_visit_detail_end_date, visit_detail_end_date
   FROM pasted_visit_details
-)
-
-select * from renamed_visit_details
+),
+--- This is called 'multiple_visits', because it joins to the pasted together visit detail table.
+--- Therefore, there can be more than one row per pasted visit detail.
+icu_admission_details_multiple_visits
+AS (
+	SELECT p.person_id
+		,vd.visit_occurrence_id
+		,vd.visit_detail_id
+		,vd.new_visit_detail_id
+		,COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) AS icu_admission_datetime
+		,COALESCE(vd.visit_detail_end_datetime, vd.visit_detail_end_date) AS icu_discharge_datetime
+	FROM @schema.person p
+	-- this table has been filtered to include ICU stays only
+	INNER JOIN renamed_visit_details vd
+	ON p.person_id = vd.person_id
+	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= @start_date
+		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= @end_date
+	),
+	--- De-duplicating, but without the original visit detail IDs
+		icu_admission_details as (
+		SELECT
+		d.person_id
+		@age_query
+		,c.concept_name AS gender
+		,d.visit_occurrence_id
+		,d.new_visit_detail_id AS visit_detail_id
+		,d.icu_admission_datetime
+		,d.icu_discharge_datetime
+	FROM (
+		SELECT DISTINCT
+			person_id,
+			visit_occurrence_id,
+			new_visit_detail_id,
+			icu_admission_datetime,
+			icu_discharge_datetime
+		FROM icu_admission_details_multiple_visits
+	) d
+	INNER JOIN hic_cc_004.person p ON d.person_id = p.person_id
+	INNER JOIN hic_cc_004.concept c ON p.gender_concept_id = c.concept_id
+	)
