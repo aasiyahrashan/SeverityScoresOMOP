@@ -90,7 +90,7 @@ AS (
 		icu_admission_details as (
 		SELECT
 		d.person_id
-		@age_query
+		,@age_query
 		,c.concept_name AS gender
 		,d.visit_occurrence_id
 		,d.new_visit_detail_id AS visit_detail_id

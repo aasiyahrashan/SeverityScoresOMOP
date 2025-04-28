@@ -70,7 +70,6 @@ get_score_variables <- function(conn, dialect, schema,
     read_file(system.file("paste_disjoint_icu_visits.sql",
                           package = "SeverityScoresOMOP")) %>%
     render(age_query = age_query,
-           schema = schema,
            start_date = single_quote(start_date),
            end_date = single_quote(end_date))
 
@@ -127,14 +126,15 @@ get_score_variables <- function(conn, dialect, schema,
     raw_sql <-
       read_file(system.file("gcs_if_stored_as_concept.sql",
                             package = "SeverityScoresOMOP")) %>%
-      render(window_measurement = window_query(window_start_point,
+      render(
+        pasted_visits = pasted_visits_sql,
+        schema = schema,
+        first_window = first_window,
+        last_window = last_window,
+        window_measurement = window_query(window_start_point,
                                                "measurement_datetime",
                                                "measurement_date", cadence)) %>%
-      translate(tolower(dialect)) %>%
-      render(pasted_visits = pasted_visits_sql,
-             schema = schema,
-             first_window = first_window,
-             last_window = last_window)
+      translate(tolower(dialect))
 
     # Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
@@ -182,20 +182,17 @@ get_score_variables <- function(conn, dialect, schema,
     system.file("physiology_variables.sql",
                 package = "SeverityScoresOMOP")) %>%
     render(
+      pasted_visits = pasted_visits_sql,
+      first_window = first_window,
+      last_window = last_window,
+      schema = schema,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
       all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),
       all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
       all_icu_admission_datetime = all_id_vars(end_join_queries$alias, "icu_admission_datetime"),
       all_required_variables = all_required_variables) %>%
-    # Don't know why the translate function adds an unnecessary CAST statement to the dates.
-    # So not translating that part.
-    translate(tolower(dialect)) %>%
-    render(
-      pasted_visits = pasted_visits_sql,
-      first_window = first_window,
-      last_window = last_window,
-      schema = schema)
+    translate(tolower(dialect))
 
   #### Running the query
   cat(raw_sql)
