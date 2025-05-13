@@ -105,6 +105,6 @@ AS (
 			icu_discharge_datetime
 		FROM icu_admission_details_multiple_visits
 	) d
-	INNER JOIN hic_cc_004.person p ON d.person_id = p.person_id
-	INNER JOIN hic_cc_004.concept c ON p.gender_concept_id = c.concept_id
+	INNER JOIN @schema.person p ON d.person_id = p.person_id
+	INNER JOIN @schema.concept c ON p.gender_concept_id = c.concept_id
 	)

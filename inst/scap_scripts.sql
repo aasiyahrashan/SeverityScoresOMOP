@@ -23,7 +23,7 @@ lagged_visit_details AS (
       PARTITION BY person_id, visit_detail_concept_id
       ORDER BY visit_detail_start_datetime
     ) AS prev_end
-  FROM hic_cc_004.visit_detail
+  FROM @schema.visit_detail
   WHERE visit_detail_concept_id = 581379
 ),
 grouped_visits AS (
@@ -90,14 +90,14 @@ AS (
 		,vd.new_visit_detail_id
 		,COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) AS icu_admission_datetime
 		,COALESCE(vd.visit_detail_end_datetime, vd.visit_detail_end_date) AS icu_discharge_datetime
-	FROM hic_cc_004.person p
-	INNER JOIN hic_cc_004.visit_occurrence vo
+	FROM @schema.person p
+	INNER JOIN @schema.visit_occurrence vo
 	ON p.person_id = vo.person_id
 	-- this table has been filtered to include ICU stays only
 	INNER JOIN renamed_visit_details vd
 	ON vo.visit_occurrence_id = vd.visit_occurrence_id
 	-- gender concept
-	INNER JOIN hic_cc_004.concept c_gender
+	INNER JOIN @schema.concept c_gender
 	ON p.gender_concept_id = c_gender.concept_id
 	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= '2021-12-01'
 		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= '2021-12-31'
@@ -121,8 +121,8 @@ AS (
 			icu_discharge_datetime
 		FROM icu_admission_details_multiple_visits
 	) d
-	INNER JOIN hic_cc_004.person p ON d.person_id = p.person_id
-	INNER JOIN hic_cc_004.concept c ON p.gender_concept_id = c.concept_id
+	INNER JOIN @schema.person p ON d.person_id = p.person_id
+	INNER JOIN @schema.concept c ON p.gender_concept_id = c.concept_id
 	)
 
 	select * from icu_admission_details
@@ -131,7 +131,7 @@ AS (
 select
 --*
 distinct person_id
-from hic_cc_004.visit_detail vd
+from @schema.visit_detail vd
 where visit_detail_concept_id = 581379
 and 	 COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= '2021-12-01'
 AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= '2021-12-31'
@@ -197,25 +197,25 @@ ORDER BY StartInstant
 
 ---- Why are there future, zero length visits??
 SELECT person_id, visit_occurrence_id, visit_start_datetime, visit_end_datetime
-FROM   hic_cc_004.visit_occurrence vo
+FROM   @schema.visit_occurrence vo
 WHERE  NOT EXISTS (
    SELECT  -- SELECT list mostly irrelevant; can just be empty in Postgres
-   FROM   hic_cc_004.visit_detail vd
+   FROM   @schema.visit_detail vd
    WHERE  vd.visit_occurrence_id = vo.visit_occurrence_id
    );
 
 ---- Why does OMOP contain persons apparently never admitted to critical care?
 SELECT person_id
-FROM hic_cc_004.visit_detail
+FROM @schema.visit_detail
 GROUP BY person_id
 HAVING SUM(CASE WHEN visit_detail_concept_id = '581379' THEN 1 ELSE 0 END) = 0
 
 ---- Some people never have visits recorded
 SELECT person_id
-FROM   hic_cc_004.person p
+FROM   @schema.person p
 WHERE  NOT EXISTS (
    SELECT  -- SELECT list mostly irrelevant; can just be empty in Postgres
-   FROM   hic_cc_004.visit_detail vd
+   FROM   @schema.visit_detail vd
    WHERE  vd.person_id = p.person_id
    );
 
@@ -294,3 +294,37 @@ renamed_visit_details AS (
 )
 
 select * from renamed_visit_details
+
+
+----- Get LDA data from caboodle and clarity. No idea what most of it means.
+select top 1000 *
+from IP_LDA_NOADDSINGLE
+
+------
+select top 2000* from LdaUclhFactX
+where LdaGeneralType like '%Airway'
+
+----
+SELECT
+*
+--    Name,
+--	fvf.FlowsheetRowEpicId,
+--    COUNT(*) AS CountPerName
+FROM
+    dbo.LdaFlowsheetUclhMappingFactX lda
+INNER JOIN
+    dbo.FlowsheetValueFact fvf ON lda.FlowsheetValueKey = fvf.FlowsheetValueKey
+INNER JOIN
+    dbo.FlowsheetRowDim fd ON fd.FlowsheetRowKey = fvf.FlowsheetRowKey
+--GROUP BY
+--    fvf.FlowsheetRowEpicId, Name
+--order by COUNT(*) desc
+where fvf.FlowsheetRowEpicId = '700'
+
+--https://prd-cdwconsole.et1053.epichosted.com/PRD/tables/LdaFlowsheetUclhMappingFactX#FlowsheetRowType
+--https://prd-cdwconsole.et1053.epichosted.com/PRD/tables/LdaUclhFactX#RemovalDateKey
+--https://prd-cdwconsole.et1053.epichosted.com/PRD/tables/FlowsheetValueFact#LdaKey
+
+--- OMOP get LDAs
+select * from @schema.procedure_occurrence
+where procedure_concept_id = '4013354'-- insertion. Removal is 4150627
