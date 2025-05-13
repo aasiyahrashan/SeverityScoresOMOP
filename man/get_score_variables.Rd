@@ -28,6 +28,10 @@ get_score_variables(
 
 \item{schema}{The name of the schema you want to query.}
 
+\item{start_date}{The earliest ICU admission date/datetime. The filter is inclusive of the value specified. Needs to be in character format.}
+
+\item{end_date}{As above, but for last date. The filter is inclusive of the value specified.}
+
 \item{first_window}{An integer >= 0
 First timepoint (depending on cadence argument)
 since ICU admission to get physiology data for, starting with 0.
@@ -58,10 +62,6 @@ first 4 days of admission, with one row per day.}
 Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
 If this option is chosen, cadence must be `24`.
 Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.}
-
-\item{start_datetime}{The earliest ICU admission date/datetime. The filter is inclusive of the value specified. Needs to be in character format.}
-
-\item{end_datetime}{As above, but for last date. The filter is inclusive of the value specified.}
 
 \item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 Should match the example_concepts.tsv file format.}

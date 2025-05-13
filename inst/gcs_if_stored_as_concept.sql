@@ -4,40 +4,60 @@
 --- These are the LOINC concepts with answers. https://athena.ohdsi.org/search-terms/terms/3008223
 --- https://athena.ohdsi.org/search-terms/terms/3009094
 --- https://athena.ohdsi.org/search-terms/terms/3016335
-WITH icu_admission_details
-AS (
-	--- We generally want ICU admission information.
-	--- But CCHIC doesn't have it, so we use hospital info.
-	SELECT p.person_id
-		,vo.visit_occurrence_id
-		,vd.visit_detail_id
-		,COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date, vo.visit_start_datetime, vo.visit_start_date) AS icu_admission_datetime
-	FROM @schema.person p
-	INNER JOIN @schema.visit_occurrence vo
-		ON p.person_id = vo.person_id
-	-- this should contain ICU stay information, if it exists at all
-	LEFT JOIN @schema.visit_detail vd
-		ON p.person_id = vd.person_id
-			AND vo.visit_occurrence_id = vd.visit_occurrence_id
-	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
-	                vo.visit_start_datetime, vo.visit_start_date) >= @start_date
-		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date,
-		              vo.visit_start_datetime, vo.visit_start_date) <= @end_date
+WITH
 
-	),
+@pasted_visits
 
-	--- Making sure each component of the score is measured at the same time, so we're not
-	--- matching the eye score from one hour to the verbal score of another.
-gcs_concepts
-AS (
-	SELECT adm.person_id
-		,adm.visit_occurrence_id
-		,adm.visit_detail_id
-		,@window_measurement AS time_in_icu
-		,COALESCE(t.measurement_datetime, t.measurement_date) AS measurement_datetime
-		--- The max here is just a method of getting the output into wide format.
-		-- There shouldn't be more than one measurement at exactly the same time.
-		,MAX(CASE
+
+, measurement_non_aggregated as (
+SELECT
+ t.*
+ ,adm.icu_admission_datetime
+,@window_measurement as time_in_icu
+--- The admission details table has multiple rows per pasted visit detail.
+--- So if visit_detail_id is null in either table, the time join returns multiple identical rows.
+--- Making sure I only get one row back at the end, here. The variable I order by does not matter.
+, ROW_NUMBER() OVER (
+  PARTITION BY t.measurement_id
+  ORDER BY t.person_id
+) AS rn
+ FROM icu_admission_details_multiple_visits adm
+ INNER JOIN @schema.measurement t
+-- making sure the visits match up, and filtering by number of days in ICU
+ON adm.person_id = t.person_id
+-- Visit occurrence is not always linked to the other tables.
+-- So joining by time instead.
+AND (adm.visit_occurrence_id = t.visit_occurrence_id
+      OR ((t.visit_occurrence_id IS NULL)
+          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date) >= adm.icu_admission_datetime)
+          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date)) < adm.icu_discharge_datetime)))
+-- Visit details can either not exist for the patient (missing in the adm table),
+-- or not be linked to the clincial data table (missing in the 't' table)
+AND (adm.visit_detail_id = t.visit_detail_id
+     OR adm.visit_detail_id IS NULL
+      --- Dealing with case where visit detail ID is not included in other table.
+      OR ((t.visit_detail_id IS NULL)
+          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date)) >= adm.icu_admission_datetime)
+          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date)) < adm.icu_discharge_datetime)))
+AND @window_measurement >= @first_window
+AND @window_measurement <= @last_window
+-- Filtering for GCS concepts only
+WHERE t.measurement_concept_id IN ('3016335', '3008223', '3009094')
+AND value_as_concept_id IS NOT NULL
+),
+
+--- Making sure each component of the score is measured at the same time, so we're not
+--- matching the eye score from one hour to the verbal score of another.
+gcs_concepts as (
+	--- selecting non-duplicated values and aggregating
+  	SELECT
+  	t.person_id
+  	-- can't rely on visit occurrence and visit detail IDs being linked to these tables.
+    -- So not selecting them. Identifying visits by person ID + admission time
+  	,t.icu_admission_datetime
+  	,t.time_in_icu
+  	,COALESCE(t.measurement_datetime, t.measurement_date) AS measurement_datetime
+    ,MAX(CASE
 				WHEN t.measurement_concept_id = '3016335'
 					THEN t.value_as_concept_id
 				END) gcs_eye
@@ -49,38 +69,15 @@ AS (
 				WHEN t.measurement_concept_id = '3009094'
 					THEN t.value_as_concept_id
 				END) gcs_verbal
-	FROM icu_admission_details adm
-	INNER JOIN @schema.measurement t
-		-- making sure the visits match up, and filtering by number of days in ICU
-		ON adm.person_id = t.person_id
-  	-- Visit occurrence is not always linked to the other tables.
-  	-- So joining by time instead.
-  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
-  	      OR ((t.visit_occurrence_id IS NULL)
-  	          AND (coalesce(t.measurement_datetime, t.measurement_date) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.measurement_datetime, t.measurement_date) < adm.icu_discharge_datetime)))
-  	-- Visit detail ID is not available at all in CCHIC.
-  	AND (adm.visit_detail_id = t.visit_detail_id
-  	      OR adm.visit_detail_id IS NULL
-  	      --- Dealing with case where visit detail ID is not included in other table.
-  	      OR ((t.visit_detail_id IS NULL)
-  	          AND (coalesce(t.measurement_datetime, t.measurement_date) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.measurement_datetime, t.measurement_date) < adm.icu_discharge_datetime)))
-			AND @window_measurement >= '@first_window'
-			AND @window_measurement <= '@last_window'
-	--- Making sure we get gcs values only. The variables become null otherwise.
-	WHERE value_as_concept_id IS NOT NULL
-		AND measurement_concept_id IN ('3016335', '3008223', '3009094')
+    FROM measurement_non_aggregated as t
+    WHERE rn = 1
 	---- Getting values that were measured at the same time.
-	GROUP BY adm.person_id
-		,adm.visit_occurrence_id
-		,adm.visit_detail_id
-		,adm.icu_admission_datetime
+	GROUP BY
+	  t.person_id
+		,t.icu_admission_datetime
 		,@window_measurement
 		,COALESCE(t.measurement_datetime, t.measurement_date)
-
-	),
-
+)
 	----- Converting the concept IDs to numbers.
 gcs_numbers
 AS (
@@ -128,13 +125,12 @@ AS (
 	)
 ---- Getting min and max per day.
 SELECT person_id
-	,visit_occurrence_id
-	,visit_detail_id
+  ,icu_admission_datetime
 	,time_in_icu
 	,MIN(gcs_eye + gcs_motor + gcs_verbal) AS min_gcs
 	,MAX(gcs_eye + gcs_motor + gcs_verbal) AS max_gcs
 FROM gcs_numbers
-GROUP BY person_id
-	,visit_occurrence_id
-	,visit_detail_id
+GROUP BY
+  person_id
+  ,icu_admission_datetime
 	,time_in_icu

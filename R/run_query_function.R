@@ -5,9 +5,9 @@
 #' @param conn A connection object to a database
 #' @param dialect dialect A dialect supported by SQLRender
 #' @param schema The name of the schema you want to query.
-#' @param start_datetime
+#' @param start_date
 #' The earliest ICU admission date/datetime. The filter is inclusive of the value specified. Needs to be in character format.
-#' @param end_datetime
+#' @param end_date
 #' As above, but for last date. The filter is inclusive of the value specified.
 #' @param first_window An integer >= 0
 #' First timepoint (depending on cadence argument)
@@ -61,9 +61,17 @@ get_score_variables <- function(conn, dialect, schema,
                                 age_method = "dob",
                                 cadence = 24,
                                 window_start_point = "calendar_date") {
-  # Editing the date variables to keep explicit single quote for SQL
-  start_date <- single_quote(start_date)
-  end_date <- single_quote(end_date)
+  # Creating age query
+  age_query <- age_query(age_method)
+
+  # Processing the ICU admission and discharge query.
+  # This pastes visit details together.
+  pasted_visits_sql <-
+    read_file(system.file("paste_disjoint_icu_visits.sql",
+                          package = "SeverityScoresOMOP")) %>%
+    render(age_query = age_query,
+           start_date = single_quote(start_date),
+           end_date = single_quote(end_date))
 
   # Getting list of all variable names
   variable_names <- read_delim(file = system.file("variable_names.csv",
@@ -118,22 +126,19 @@ get_score_variables <- function(conn, dialect, schema,
     raw_sql <-
       read_file(system.file("gcs_if_stored_as_concept.sql",
                             package = "SeverityScoresOMOP")) %>%
-      render(window_measurement = window_query(window_start_point,
+      render(
+        pasted_visits = pasted_visits_sql,
+        schema = schema,
+        first_window = first_window,
+        last_window = last_window,
+        window_measurement = window_query(window_start_point,
                                                "measurement_datetime",
                                                "measurement_date", cadence)) %>%
-      translate(tolower(dialect)) %>%
-      render(schema = schema,
-             start_date = start_date,
-             end_date = end_date,
-             first_window = first_window,
-             last_window = last_window)
+      translate(tolower(dialect))
 
     # Running the query
     gcs_data <- dbGetQuery(conn, raw_sql)
   }
-
-  # Creating age query
-  age_query <- age_query(age_method)
 
   # Constructing with query for each table.
   with_queries_per_table <- concepts %>%
@@ -177,22 +182,17 @@ get_score_variables <- function(conn, dialect, schema,
     system.file("physiology_variables.sql",
                 package = "SeverityScoresOMOP")) %>%
     render(
-      age_query = age_query,
+      pasted_visits = pasted_visits_sql,
+      first_window = first_window,
+      last_window = last_window,
+      schema = schema,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
       all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),
       all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
       all_icu_admission_datetime = all_id_vars(end_join_queries$alias, "icu_admission_datetime"),
       all_required_variables = all_required_variables) %>%
-    # Don't know why the translate function adds an unnecessary CAST statement to the dates.
-    # So not translating that part.
-    translate(tolower(dialect)) %>%
-    render(
-      first_window = first_window,
-      last_window = last_window,
-      schema = schema,
-      start_date = start_date,
-      end_date = end_date)
+    translate(tolower(dialect))
 
   #### Running the query
   cat(raw_sql)
@@ -204,8 +204,7 @@ get_score_variables <- function(conn, dialect, schema,
     data <- left_join(data,
                       gcs_data,
                       by = c("person_id",
-                             "visit_occurrence_id",
-                             "visit_detail_id",
+                             "icu_admission_datetime",
                              "time_in_icu"))
   }
 
