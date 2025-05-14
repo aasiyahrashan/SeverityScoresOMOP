@@ -12,6 +12,7 @@ SELECT adm.person_id
        ,adm.age
        ,adm.gender
        ,adm.icu_admission_datetime
+       ,adm.icu_discharge_datetime
        ,adm.care_site_id
        ,adm.care_site_name
        ,adm.death_datetime
