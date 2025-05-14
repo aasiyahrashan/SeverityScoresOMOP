@@ -12,9 +12,12 @@ SELECT adm.person_id
        ,adm.age
        ,adm.gender
        ,adm.icu_admission_datetime
+       ,adm.care_site_id
+       ,adm.care_site_name
+       ,adm.death_datetime
        ,COALESCE(@all_time_in_icu) AS time_in_icu
        @all_required_variables
-      @all_end_join_queries
+       @all_end_join_queries
       -- Admission information needs to be included, even if there are no physiology values
       RIGHT JOIN icu_admission_details adm
       ON COALESCE(@all_person_id) = adm.person_id
