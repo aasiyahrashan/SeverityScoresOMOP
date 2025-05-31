@@ -77,7 +77,7 @@ age_query <- function(age_method, dialect) {
 
 # Builds the 'WHERE' query for the drug table, to ensure the generate_series SQL
 # function is only called for patients and timepoints with the drugs of interest.
-string_search_expression <- function(concepts,
+drugs_where_clause <- function(concepts,
                                      variable_names,
                                      table_name) {
 
@@ -89,10 +89,12 @@ string_search_expression <- function(concepts,
 
   # Getting dataframes for each variable.
   concept_ids_required <- concepts %>%
-    filter(!omop_variable %in% c("concept_name", "concept_code") |
+    filter(!omop_variable %in% c("concept_name", "concept_code", "ancestor_concept_id") |
              is.na(omop_variable))
   strings_required <- concepts %>%
     filter(omop_variable %in% c("concept_name", "concept_code"))
+  ancestor_concept_ids_required <- concepts %>%
+    filter(omop_variable == "ancestor_concept_id")
 
   # Need a section for concept ID queries
   concept_id_expression <-
@@ -115,20 +117,32 @@ string_search_expression <- function(concepts,
              "%'")) %>%
     pull(concept_id)
 
+  # This list is ancestor concept.
+  ancestor_expression <-
+    ancestor_concept_ids_required %>%
+    distinct(omop_variable, concept_id) %>%
+    reframe(
+      concept_id =
+        glue("{variable_names$concept_id_var} IN (SELECT descendant_concept_id FROM
+        @schema.concept_ancestor WHERE
+        ancestor_concept_id IN (",
+             glue_collapse(unique(concept_id), sep = ", "),
+             "))"))
+
 
   # Joining based on rows filled in.
-  if(nrow(concept_ids_required) > 0 &
-     nrow(strings_required) > 0){
-    combined_expression <- glue("{concept_id_expression} OR {string_search_expression}")
-  } else if (nrow(concept_ids_required) > 0){
-    combined_expression <- concept_id_expression
-  } else if (nrow(strings_required) > 0){
-    combined_expression <- string_search_expression
-  } else{
-    # If no concepts, I want no row returned. So I make the condition say 'where false'.
-    combined_expression <- "false"
-  }
+  expressions <- c()
+  if (nrow(concept_ids_required) > 0) expressions <- c(expressions, concept_id_expression)
+  if (nrow(strings_required) > 0) expressions <- c(expressions, string_search_expression)
+  if (nrow(ancestor_concept_ids_required) > 0) expressions <- c(expressions, ancestor_expression)
 
+  # Combine with OR, or use 'false' if none are present
+  # If no concepts, I want no row returned. So I make the condition say 'where false'.
+  combined_expression <- if (length(expressions) > 0) {
+    paste(expressions, collapse = " OR ")
+  } else {
+    "false"
+  }
   combined_expression
 }
 
@@ -226,7 +240,7 @@ variables_query <- function(concepts,
   non_numeric_string_search_concepts <-
     concepts %>%
     filter(omop_variable %in% c("concept_name", "concept_code")) %>%
-    # It's possible for strings to represent the same variable, so grouping here.
+    # It's possible for multiple strings to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
       # This is slightly odd, but just makes sure we don't duplicate concept
@@ -252,13 +266,44 @@ variables_query <- function(concepts,
            THEN {table_id_var}
            END ) AS count_{short_name}"))
 
+  # Ancestor concepts
+  ancestor_concepts <-
+    concepts %>%
+    filter(omop_variable %in% c("ancestor_concept_id")) %>%
+    # It's possible for multiple concept IDs to represent the same variable, so grouping here.
+    group_by(short_name, omop_variable, additional_filter_variable_name) %>%
+    summarise(
+      # This is slightly odd, but just makes sure we don't duplicate concept
+      # IDs in cases where we're selecting specific values
+      # The query returns the number of rows matching the concept IDs provided.
+      concept_id = glue_collapse(unique(concept_id), sep = ", "),
+      additional_filter_value = glue(
+        "'",
+        glue_collapse(additional_filter_value, sep = "', '"),
+        "'"
+      )
+    ) %>%
+    mutate(
+      additional_filter_query =
+          if_else(!is.na(additional_filter_variable_name),
+                  glue("AND {additional_filter_variable_name}
+              IN ({additional_filter_value})"), "", ""),
+        count_query = glue(
+      ", COUNT ( CASE WHEN {concept_id_var} in (SELECT descendant_concept_id FROM
+            @schema.concept_ancestor WHERE
+            ancestor_concept_id IN ({concept_id}))
+            {additional_filter_query}
+            THEN {table_id_var} END) AS count_{short_name}"))
+
+
   # Collapsing the queries into strings.
   variables_required <-
     glue(glue_collapse(c(numeric_concepts$max_query,
                          numeric_concepts$min_query,
                          numeric_concepts$unit_query,
                          non_numeric_concepts$count_query,
-                         non_numeric_string_search_concepts$count_query),
+                         non_numeric_string_search_concepts$count_query,
+                         ancestor_concepts$count_query),
                        sep = "\n"), "\n")
 
   # Return query
@@ -319,7 +364,8 @@ all_required_variables_query <- function(concepts){
     mutate(short_name =
              case_when(omop_variable %in%
                          c("value_as_concept_id",
-                           "concept_name", "concept_code") |
+                           "concept_name", "concept_code",
+                           "ancestor_concept_id") |
                          is.na(omop_variable) ~
                          glue("count_{short_name}"),
                        omop_variable == "value_as_number" ~
