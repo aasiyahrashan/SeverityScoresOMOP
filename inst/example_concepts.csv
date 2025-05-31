@@ -34,17 +34,17 @@ SOFA,platelet,Measurement,4267147,value_as_number,,,,,
 SOFA,bilirubin,Measurement,37398424,value_as_number,,,,,
 APACHE II,ventilation,Procedure,4230167,,,procedure_source_value,R IP VENT MODE,,Epic ventilation mode. Filtering by source because not all vent modes mapped to this concept are useful. Not part of APACHE II.
 APACHE II,device_et_tube,Device,4097216,,,,,,Endotracheal tube
-APACHE II,sedation,Drug,propofol,concept_name,,,,,
-APACHE II,sedation,Drug,remifentanil,concept_name,,,,,
-APACHE II,sedation,Drug,midazolam,concept_name,,,,,
-APACHE II,sedation,Drug,dexmedetomidine,concept_name,,,,,
-APACHE II,sedation,Drug,chlonidine,concept_name,,,,,
-APACHE II,sedation,Drug,haloperidol,concept_name,,,,,
+APACHE II,sedation_string,Drug,propofol,concept_name,,,,,
+APACHE II,sedation_string,Drug,remifentanil,concept_name,,,,,
+APACHE II,sedation_string,Drug,midazolam,concept_name,,,,,
+APACHE II,sedation_string,Drug,dexmedetomidine,concept_name,,,,,
+APACHE II,sedation_string,Drug,chlonidine,concept_name,,,,,
+APACHE II,sedation_string,Drug,haloperidol,concept_name,,,,,
 APACHE II,bp_string,Measurement,blood pressure,concept_name,,,,,Test string search for strings
 APACHE II,saline,Drug,42479436,,,,,,Test drug concept ID search
-APACHE II,sedation,Drug,753626,concept_ancestor,,,,,Test drug descendant search
-APACHE II,sedation,Drug,19016749,concept_ancestor,,,,,Test drug descendant search
-APACHE II,sedation,Drug,708298,concept_ancestor,,,,,Test drug descendant search
-APACHE II,sedation,Drug,19061088,concept_ancestor,,,,,Test drug descendant search
-APACHE II,sedation,Drug,1398937,concept_ancestor,,,,,Test drug descendant search
-APACHE II,sedation,Drug,766529,concept_ancestor,,,,,Test drug descendant search
+APACHE II,sedation_ancestor,Drug,753626,ancestor_concept_id,,,,,Test drug descendant search
+APACHE II,sedation_ancestor,Drug,19016749,ancestor_concept_id,,,,,Test drug descendant search
+APACHE II,sedation_ancestor,Drug,708298,ancestor_concept_id,,,,,Test drug descendant search
+APACHE II,sedation_ancestor,Drug,19061088,ancestor_concept_id,,,,,Test drug descendant search
+APACHE II,sedation_ancestor,Drug,1398937,ancestor_concept_id,,,,,Test drug descendant search
+APACHE II,sedation_ancestor,Drug,766529,ancestor_concept_id,,,,,Test drug descendant search

@@ -126,8 +126,8 @@ drug_with_query <- function(concepts, variable_names,
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
-  string_search_expression = string_search_expression(concepts,
-                                                      variable_names, "Drug")
+  drugs_where_clause = drugs_where_clause(concepts,
+                                          variable_names, "Drug")
 
   # Drug join
   drug_join <- translate_drug_join(dialect)
@@ -186,7 +186,7 @@ drug_with_query <- function(concepts, variable_names,
                 AND ({window_start} <= @last_window OR {window_end} <= @last_window)
           INNER JOIN @schema.concept c
           ON c.concept_id = t.drug_concept_id
-          WHERE {string_search_expression}
+          WHERE {drugs_where_clause}
       ) base
       --- selecting non-duplicated values
       WHERE rn = 1) t_w
