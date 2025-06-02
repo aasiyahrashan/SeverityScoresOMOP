@@ -11,6 +11,8 @@ SELECT adm.person_id
        ,adm.visit_detail_id
        ,adm.age
        ,adm.gender
+       ,adm.hospital_admission_datetime
+       ,adm.hospital_discharge_datetime
        ,adm.icu_admission_datetime
        ,adm.icu_discharge_datetime
        ,adm.care_site_id

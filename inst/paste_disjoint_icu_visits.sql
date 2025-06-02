@@ -14,13 +14,13 @@
 -- You can use these new values to consistently group related visit_detail records across clinical data tables.
 lagged_visit_details AS (
   SELECT
-    *,
-    LAG(visit_detail_end_datetime) OVER (
-      PARTITION BY person_id, visit_detail_concept_id
-      ORDER BY visit_detail_start_datetime
+    vd.*,
+    LAG(vd.visit_detail_end_datetime) OVER (
+      PARTITION BY vd.person_id, vd.visit_detail_concept_id
+      ORDER BY vd.visit_detail_start_datetime
     ) AS prev_end
-  FROM @schema.visit_detail
-  WHERE visit_detail_concept_id = 581379
+  FROM @schema.visit_detail vd
+  WHERE vd.visit_detail_concept_id = 581379
 ),
 grouped_visits AS (
   SELECT *,
@@ -28,47 +28,38 @@ grouped_visits AS (
           WHEN DATEDIFF(MINUTE, prev_end, visit_detail_start_datetime) < 60*6 THEN 0
           ELSE 1
         END) OVER (
-          PARTITION BY person_id, visit_detail_concept_id
+          PARTITION BY person_id, visit_occurrence_id, visit_detail_concept_id
           ORDER BY visit_detail_start_datetime
           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS group_id
   FROM lagged_visit_details
 ),
-pasted_visit_details AS (
-  SELECT
-    *,
-    MIN(visit_detail_start_datetime) OVER (
-      PARTITION BY person_id, visit_detail_concept_id, group_id
-    ) AS new_visit_detail_start_datetime,
-    MAX(visit_detail_end_datetime) OVER (
-      PARTITION BY person_id, visit_detail_concept_id, group_id
-    ) AS new_visit_detail_end_datetime,
-        MIN(visit_detail_start_date) OVER (
-      PARTITION BY person_id, visit_detail_concept_id, group_id
-    ) AS new_visit_detail_start_date,
-    MAX(visit_detail_end_date) OVER (
-      PARTITION BY person_id, visit_detail_concept_id, group_id
-    ) AS new_visit_detail_end_date,
-    DENSE_RANK() OVER (
-      ORDER BY person_id, visit_detail_concept_id, group_id
-    ) AS new_visit_detail_id
-  FROM grouped_visits
-),
 -- renaming time variables here to make future joining easier.
 -- Effectively, we have a visit detail table with multiple rows per pasted visit, since
 -- we need the original IDs to join to clincial data tables.
-renamed_visit_details AS (
+pasted_visit_details AS (
   SELECT
-  person_id,
-  visit_occurrence_id,
-  visit_detail_id,
-  new_visit_detail_id,
-  new_visit_detail_start_datetime visit_detail_start_datetime,
-  new_visit_detail_end_datetime visit_detail_end_datetime,
-  new_visit_detail_start_date visit_detail_start_date,
-  new_visit_detail_end_date, visit_detail_end_date
-  FROM pasted_visit_details
+    person_id,
+    visit_occurrence_id,
+    visit_detail_id,
+    MIN(visit_detail_start_datetime) OVER (
+      PARTITION BY person_id, visit_occurrence_id, group_id
+    ) AS visit_detail_start_datetime,
+    MAX(visit_detail_end_datetime) OVER (
+      PARTITION BY  person_id, visit_occurrence_id, group_id
+    ) AS visit_detail_end_datetime,
+        MIN(visit_detail_start_date) OVER (
+      PARTITION BY person_id, visit_occurrence_id, group_id
+    ) AS visit_detail_start_date,
+    MAX(visit_detail_end_date) OVER (
+      PARTITION BY person_id, visit_occurrence_id, group_id
+    ) AS visit_detail_end_date,
+    DENSE_RANK() OVER (
+      ORDER BY person_id, visit_occurrence_id, group_id
+    ) AS new_visit_detail_id
+  FROM grouped_visits
 ),
+
 --- This is called 'multiple_visits', because it joins to the pasted together visit detail table.
 --- Therefore, there can be more than one row per pasted visit detail.
 icu_admission_details_multiple_visits
@@ -81,19 +72,21 @@ AS (
 		,COALESCE(vd.visit_detail_end_datetime, vd.visit_detail_end_date) AS icu_discharge_datetime
 	FROM @schema.person p
 	-- this table has been filtered to include ICU stays only
-	INNER JOIN renamed_visit_details vd
+	INNER JOIN pasted_visit_details vd
 	ON p.person_id = vd.person_id
 	WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= @start_date
 		AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= @end_date
 	),
 	--- De-duplicating, but without the original visit detail IDs
-		icu_admission_details as (
+	icu_admission_details as (
 		SELECT
 		d.person_id
 		,@age_query
 		,c.concept_name AS gender
 		,d.visit_occurrence_id
 		,d.new_visit_detail_id AS visit_detail_id
+    ,COALESCE(vo.visit_start_datetime, vo.visit_start_date) AS hospital_admission_datetime
+    ,COALESCE(vo.visit_end_datetime, vo.visit_end_date) AS hospital_discharge_datetime
 		,d.icu_admission_datetime
 		,d.icu_discharge_datetime
 		,cs.care_site_id
@@ -109,8 +102,15 @@ AS (
 		FROM icu_admission_details_multiple_visits
 	) d
 	INNER JOIN @schema.person p ON d.person_id = p.person_id
+	INNER JOIN @schema.visit_occurrence vo
+  on vo.person_id = d.person_id
+  AND (vo.visit_occurrence_id = d.visit_occurrence_id
+  ---- Some OMOP loads don't include visit_occurrence_ids in the visit_detail table.
+       OR
+        (d.icu_admission_datetime >= COALESCE(vo.visit_start_datetime, vo.visit_start_date)
+          AND d.icu_discharge_datetime <= COALESCE(vo.visit_end_datetime, vo.visit_end_date)
+          AND  d.visit_occurrence_id is null))
 	INNER JOIN @schema.concept c ON p.gender_concept_id = c.concept_id
 	LEFT JOIN @schema.care_site cs ON p.care_site_id = cs.care_site_id
-	LEFT JOIN @schema.death death
-	ON p.person_id = death.person_id
+	LEFT JOIN @schema.death death ON p.person_id = death.person_id
 	)
