@@ -58,16 +58,8 @@ with_query <- function(concepts, table_name, variable_names,
   	-- So joining by time instead.
   	AND (adm.visit_occurrence_id = t.visit_occurrence_id
   	      OR ((t.visit_occurrence_id IS NULL)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.icu_discharge_datetime)))
-  	-- Visit details can either not exist for the patient (missing in the adm table),
-  	-- or not be linked to the clincial data table (missing in the 't' table)
-  	AND (adm.visit_detail_id = t.visit_detail_id
-  	     OR adm.visit_detail_id IS NULL
-  	      --- Dealing with case where visit detail ID is not included in other table.
-  	      OR ((t.visit_detail_id IS NULL)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.icu_admission_datetime)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.icu_discharge_datetime)))
+  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.hospital_admission_datetime)
+  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.hospital_discharge_datetime)))
   	AND {window} >= @first_window
   	AND {window} <= @last_window
   	)
@@ -172,16 +164,8 @@ drug_with_query <- function(concepts, variable_names,
         	-- So joining by time instead.
         	AND (adm.visit_occurrence_id = t.visit_occurrence_id
         	      OR ((t.visit_occurrence_id IS NULL)
-        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
-        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
-        	-- Visit detail ID can either be completely missing for the patient (missing in adm table),
-        	-- or just not be linked to the drug table. Missing in the 't' table.
-        	AND (adm.visit_detail_id = t.visit_detail_id
-        	      OR adm.visit_detail_id IS NULL
-        	      --- Dealing with case where visit detail ID is not included in other table.
-        	      OR ((t.visit_detail_id IS NULL)
-        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.icu_admission_datetime)
-        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.icu_discharge_datetime)))
+        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.hospital_admission_datetime)
+        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.hospital_discharge_datetime)))
                 AND ({window_start} >= @first_window OR {window_end} >= @first_window)
                 AND ({window_start} <= @last_window OR {window_end} <= @last_window)
           INNER JOIN @schema.concept c

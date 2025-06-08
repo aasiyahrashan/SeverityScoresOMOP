@@ -9,10 +9,10 @@
 #' The earliest ICU admission date/datetime. The filter is inclusive of the value specified. Needs to be in character format.
 #' @param end_date
 #' As above, but for last date. The filter is inclusive of the value specified.
-#' @param first_window An integer >= 0
-#' First timepoint (depending on cadence argument)
-#' since ICU admission to get physiology data for, starting with 0.
-#' Eg, if cadence is 24, 0 will be the first day. If cadence is 1, 0 will be the first hour.
+#' @param first_window An integer
+#' First timepoint (depending on cadence argument) to get physiology data for.
+#' Eg, if cadence is 24, 0 will be the first day of the ICU visit. If cadence is 1, 0 will be the first hour.
+#' Negative values can get data from before the ICU stay, as long as the data is within the hospital visit.
 #' The filter is inclusive of the value specified.
 #' @param last_window An integer >= 0
 #' Last timepoint (depending on cadence argument) since ICU admission

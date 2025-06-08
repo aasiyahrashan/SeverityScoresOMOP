@@ -56,7 +56,7 @@ data <- get_score_variables(
   schema = "your_schema_name",
   start_date = "2022-07-01",
   end_date = "2022-07-31",
-  first_window = 0,
+  first_window = 0, # Negative values can get data from before the ICU stay, as long as the data is within the hospital visit.
   last_window = 6, # Gets the first 7 days of data, since `cadence` is set to 24
   concepts_file_path = "path_to_your_concepts_file",
   severity_score = c("APACHE II", "SOFA"),
