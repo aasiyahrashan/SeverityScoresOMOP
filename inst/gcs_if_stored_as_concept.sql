@@ -29,8 +29,8 @@ ON adm.person_id = t.person_id
 -- So joining by time instead.
 AND (adm.visit_occurrence_id = t.visit_occurrence_id
       OR ((t.visit_occurrence_id IS NULL)
-          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date) >= adm.icu_admission_datetime)
-          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date)) < adm.icu_discharge_datetime)))
+          AND (coalesce(t.measurement_datetime, t.measurement_date) >= adm.icu_admission_datetime)
+          AND (coalesce(t.measurement_datetime, t.measurement_date)) < adm.icu_discharge_datetime))
 AND @window_measurement >= @first_window
 AND @window_measurement <= @last_window
 -- Filtering for GCS concepts only
@@ -67,14 +67,14 @@ gcs_concepts as (
 	GROUP BY
 	  t.person_id
 		,t.icu_admission_datetime
-		,@window_measurement
+		,t.time_in_icu
 		,COALESCE(t.measurement_datetime, t.measurement_date)
-)
+),
 	----- Converting the concept IDs to numbers.
 gcs_numbers
 AS (
 	SELECT person_id
-		,visit_occurrence_id
+	,icu_admission_datetime
 		,time_in_icu
 		,CASE
 			WHEN gcs_eye = '45877537'
