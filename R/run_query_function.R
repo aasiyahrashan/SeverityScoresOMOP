@@ -137,6 +137,7 @@ get_score_variables <- function(conn, dialect, schema,
       translate(tolower(dialect))
 
     # Running the query
+    cat(raw_sql)
     gcs_data <- dbGetQuery(conn, raw_sql)
   }
 

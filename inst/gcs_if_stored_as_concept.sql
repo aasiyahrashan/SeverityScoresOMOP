@@ -31,14 +31,6 @@ AND (adm.visit_occurrence_id = t.visit_occurrence_id
       OR ((t.visit_occurrence_id IS NULL)
           AND (coalesce(t.measurement_start_datetime, t.measurement_start_date) >= adm.icu_admission_datetime)
           AND (coalesce(t.measurement_start_datetime, t.measurement_start_date)) < adm.icu_discharge_datetime)))
--- Visit details can either not exist for the patient (missing in the adm table),
--- or not be linked to the clincial data table (missing in the 't' table)
-AND (adm.visit_detail_id = t.visit_detail_id
-     OR adm.visit_detail_id IS NULL
-      --- Dealing with case where visit detail ID is not included in other table.
-      OR ((t.visit_detail_id IS NULL)
-          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date)) >= adm.icu_admission_datetime)
-          AND (coalesce(t.measurement_start_datetime, t.measurement_start_date)) < adm.icu_discharge_datetime)))
 AND @window_measurement >= @first_window
 AND @window_measurement <= @last_window
 -- Filtering for GCS concepts only
@@ -83,7 +75,6 @@ gcs_numbers
 AS (
 	SELECT person_id
 		,visit_occurrence_id
-		,visit_detail_id
 		,time_in_icu
 		,CASE
 			WHEN gcs_eye = '45877537'
