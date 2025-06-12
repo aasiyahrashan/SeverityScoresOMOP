@@ -2,7 +2,7 @@
 -- The OMOP visit_detail table in CCHIC sometimes splits what should be continuous visits into multiple rows,
 -- even when the end time of one visit is exactly the same as the start time of the next.
 -- This query "stitches" those visits back together when:
----  - the visit_detail_concept_id is 581379, representing an ICU stay
+---  - the visit_detail_concept_id is 581379 or 32037, representing an ICU stay
 --   - they belong to the same person,
 --   - the gap between the visits is less than 6 hours (to allow time for moves, visits to scanners, etc)
 --
@@ -20,7 +20,7 @@ lagged_visit_details AS (
       ORDER BY vd.visit_detail_start_datetime
     ) AS prev_end
   FROM @schema.visit_detail vd
-  WHERE vd.visit_detail_concept_id = 581379
+  WHERE vd.visit_detail_concept_id IN (581379, 32037) -- ICU stay or critical care
 ),
 grouped_visits AS (
   SELECT *,

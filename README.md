@@ -134,7 +134,7 @@ This column controls how each variable is extracted and represented in the outpu
 - **Required tables:** `Person`, `Visit Occurrence`, and `Visit Detail`
     - `Visit Occurrence`: Represents hospital stays.
     - `Visit Detail`: Represents ICU/ward stays or bed/room moves.
-- ICU stays must have `visit_detail_concept_id` set to `581379` ("Inpatient Critical Care Facility").
+- ICU stays must have `visit_detail_concept_id` set to `581379` ("Inpatient Critical Care Facility") or `32037` ("Intensive Care").
 - Each `Visit Detail` row must have `visit_occurrence_id` filled in.
 - ICU stays in the same hospital visit and separated by less than 6 hours are merged into a single stay (to avoid splitting on brief moves, e.g., for scans).
 
