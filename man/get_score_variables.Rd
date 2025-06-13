@@ -18,7 +18,8 @@ get_score_variables(
   severity_score,
   age_method = "dob",
   cadence = 24,
-  window_start_point = "calendar_date"
+  window_start_point = "calendar_date",
+  batch_size = 10000
 )
 }
 \arguments{
@@ -62,6 +63,8 @@ first 4 days of admission, with one row per day.}
 Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
 If this option is chosen, cadence must be `24`.
 Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.}
+
+\item{batch_size}{Defaults to 10000, refers to number of ICU patients in whole dataset, since filtering on time is not possible.}
 
 \item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 Should match the example_concepts.tsv file format.}

@@ -20,8 +20,7 @@ lagged_visit_details AS (
       ORDER BY vd.visit_detail_start_datetime
     ) AS prev_end
   FROM @schema.visit_detail vd
-  WHERE vd.visit_detail_concept_id IN (581379, 32037) -- ICU stay or critical care
-    AND vd.person_id IN (@person_ids)
+  WHERE vd.person_id IN (@person_ids)
 ),
 grouped_visits AS (
   SELECT *,

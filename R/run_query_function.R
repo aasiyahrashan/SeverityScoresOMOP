@@ -39,6 +39,7 @@
 #' Option 1 (the default) uses the calendar date only, with day 0 being the date of admission to ICU.
 #' If this option is chosen, cadence must be `24`.
 #' Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.
+#' @param batch_size Defaults to 10000, refers to number of ICU patients in whole dataset, since filtering on time is not possible.
 #'
 #' @returns A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
 #' The `time_in_icu` variable is the amount of time spent in ICU. The unit depends on cadence. If cadence is 24, the unit will be a day.
@@ -60,7 +61,8 @@ get_score_variables <- function(conn, dialect, schema,
                                 severity_score,
                                 age_method = "dob",
                                 cadence = 24,
-                                window_start_point = "calendar_date") {
+                                window_start_point = "calendar_date",
+                                batch_size = 10000) {
   # Creating age query
   age_query <- age_query(age_method)
 
@@ -120,52 +122,6 @@ get_score_variables <- function(conn, dialect, schema,
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
               omop_variable == "value_as_concept_id"))
 
-  # Batching person_ids for both queries.
-  person_ids <- dbGetQuery(conn,
-                           "SELECT DISTINCT person_id FROM omop_catalogue_raw.visit_detail WHERE
-                           WHERE vd.visit_detail_concept_id IN (581379, 32037)")$person_id
-  batch_size <- 1000
-  id_batches <- split(person_ids, ceiling(seq_along(person_ids)/batch_size))
-
-
-  if (nrow(gcs_concepts > 0)) {
-    # The SQL file currently has the GCS LOINC concepts hardcoded.
-    # I plan to construct it from here when I have time.
-    raw_sql <-
-      read_file(system.file("gcs_if_stored_as_concept.sql",
-                            package = "SeverityScoresOMOP")) %>%
-      render(
-        pasted_visits = pasted_visits_sql,
-        schema = schema,
-        first_window = first_window,
-        last_window = last_window,
-        window_measurement = window_query(window_start_point,
-                                               "measurement_datetime",
-                                               "measurement_date", cadence)) %>%
-      translate(tolower(dialect))
-
-    # Running the query
-    cat(raw_sql)
-
-    # Using the batches
-    for (i in seq_along(id_batches)) {
-      person_ids_batch <- id_batches[[i]]
-      raw_sql <- raw_sql %>%
-        render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
-
-      # Print batch number
-      print(glue("GCS query - Running batch {i} of {length(id_batches)}"))
-
-      gcs_data_batch <- dbGetQuery(conn, raw_sql)
-      if (i == 1) {
-        gcs_data <- gcs_data_batch
-      } else {
-        gcs_data <- bind_rows(gcs_data, gcs_data_batch)
-      }
-    }
-    gcs_data <- dbGetQuery(conn, raw_sql)
-  }
-
   # Constructing with query for each table.
   with_queries_per_table <- concepts %>%
     distinct(table) %>%
@@ -187,7 +143,7 @@ get_score_variables <- function(conn, dialect, schema,
               by = "table") %>%
     # Pasting all previous aliases together so I can use it in a coalesce for a join.
     mutate(prev_alias = accumulate(glue("{alias}.placeholder"),
-                                       ~ glue("{.x}, {.y}"))) %>%
+                                   ~ glue("{.x}, {.y}"))) %>%
     mutate(prev_alias = lag(prev_alias)) %>%
     # end_join_query is not vectorised
     rowwise() %>%
@@ -203,6 +159,29 @@ get_score_variables <- function(conn, dialect, schema,
   # All required variables for the queries
   all_required_variables <- all_required_variables_query(concepts)
 
+  # Constructing the GCS query
+  if (nrow(gcs_concepts > 0)) {
+    # The SQL file currently has the GCS LOINC concepts hardcoded.
+    # I plan to construct it from here when I have time.
+    gcs_raw_sql <-
+      read_file(system.file("gcs_if_stored_as_concept.sql",
+                            package = "SeverityScoresOMOP")) %>%
+      render(
+        pasted_visits = pasted_visits_sql,
+        schema = schema,
+        first_window = first_window,
+        last_window = last_window,
+        window_measurement = window_query(window_start_point,
+                                          "measurement_datetime",
+                                          "measurement_date", cadence)) %>%
+      translate(tolower(dialect))
+
+    # Running the query
+    cat("Printing GCS query \n")
+    cat(gcs_raw_sql)
+  }
+
+  # Constructing the main query
   # Importing the physiology data query and substituting variables
   raw_sql <- read_file(
     system.file("physiology_variables.sql",
@@ -220,26 +199,50 @@ get_score_variables <- function(conn, dialect, schema,
       all_required_variables = all_required_variables) %>%
     translate(tolower(dialect))
 
-  #### Running the query
+  cat("Printing main query")
   cat(raw_sql)
 
+  # Batching person_ids
+  # -- ICU stay or critical care
+  person_sql <- glue("
+  SELECT DISTINCT person_id
+  FROM {schema}.visit_detail
+  WHERE visit_detail_concept_id IN (581379, 32037) \n")
+
+  person_ids <- dbGetQuery(conn, person_sql)$person_id
+  id_batches <- split(person_ids, ceiling(seq_along(person_ids)/batch_size))
+
+
   # Running the query in batches
+  results <- vector("list", length(id_batches))
+  gcs_results <- vector("list", length(id_batches))
   for (i in seq_along(id_batches)) {
+
     person_ids_batch <- id_batches[[i]]
-    raw_sql <- raw_sql %>%
-      render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
 
     # Print batch number
     print(glue("Main query - Running batch {i} of {length(id_batches)}"))
 
+    raw_sql_batch <- raw_sql %>%
+      render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+
     # Getting the data
-    if (i == 1) {
-      data <- dbGetQuery(conn, raw_sql)
-    } else {
-      data <- bind_rows(data, dbGetQuery(conn, raw_sql))
+    results[[i]] <- dbGetQuery(conn, raw_sql_batch)
+
+    # Running GCS query
+    if(nrow(gcs_concepts) > 0) {
+      # Print batch number
+      print(glue("GCS query - Running batch {i} of {length(id_batches)}"))
+
+      gcs_raw_sql_batch <- gcs_raw_sql %>%
+        render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+
+      gcs_results[[i]] <- dbGetQuery(conn, gcs_raw_sql_batch)
     }
   }
-  data <- dbGetQuery(conn, raw_sql)
+
+  data <- bind_rows(results)
+  gcs_data <- bind_rows(gcs_results)
 
   ### Don't like joining here, but not much choice.
   if (nrow(gcs_concepts > 0)) {
