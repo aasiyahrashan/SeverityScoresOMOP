@@ -120,6 +120,14 @@ get_score_variables <- function(conn, dialect, schema,
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
               omop_variable == "value_as_concept_id"))
 
+  # Batching person_ids for both queries.
+  person_ids <- dbGetQuery(conn,
+                           "SELECT DISTINCT person_id FROM omop_catalogue_raw.visit_detail WHERE
+                           WHERE vd.visit_detail_concept_id IN (581379, 32037)")$person_id
+  batch_size <- 1000
+  id_batches <- split(person_ids, ceiling(seq_along(person_ids)/batch_size))
+
+
   if (nrow(gcs_concepts > 0)) {
     # The SQL file currently has the GCS LOINC concepts hardcoded.
     # I plan to construct it from here when I have time.
@@ -138,6 +146,23 @@ get_score_variables <- function(conn, dialect, schema,
 
     # Running the query
     cat(raw_sql)
+
+    # Using the batches
+    for (i in seq_along(id_batches)) {
+      person_ids_batch <- id_batches[[i]]
+      raw_sql <- raw_sql %>%
+        render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+
+      # Print batch number
+      print(glue("GCS query - Running batch {i} of {length(id_batches)}"))
+
+      gcs_data_batch <- dbGetQuery(conn, raw_sql)
+      if (i == 1) {
+        gcs_data <- gcs_data_batch
+      } else {
+        gcs_data <- bind_rows(gcs_data, gcs_data_batch)
+      }
+    }
     gcs_data <- dbGetQuery(conn, raw_sql)
   }
 
@@ -197,8 +222,24 @@ get_score_variables <- function(conn, dialect, schema,
 
   #### Running the query
   cat(raw_sql)
-  data <- dbGetQuery(conn, raw_sql)
 
+  # Running the query in batches
+  for (i in seq_along(id_batches)) {
+    person_ids_batch <- id_batches[[i]]
+    raw_sql <- raw_sql %>%
+      render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+
+    # Print batch number
+    print(glue("Main query - Running batch {i} of {length(id_batches)}"))
+
+    # Getting the data
+    if (i == 1) {
+      data <- dbGetQuery(conn, raw_sql)
+    } else {
+      data <- bind_rows(data, dbGetQuery(conn, raw_sql))
+    }
+  }
+  data <- dbGetQuery(conn, raw_sql)
 
   ### Don't like joining here, but not much choice.
   if (nrow(gcs_concepts > 0)) {
