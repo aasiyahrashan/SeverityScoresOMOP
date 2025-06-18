@@ -210,7 +210,7 @@ get_score_variables <- function(conn, dialect, schema,
   FROM {schema}.visit_detail
   WHERE visit_detail_concept_id IN (581379, 32037)
                      AND COALESCE(visit_detail_start_datetime,
-                     visit_detail_start_date) <= {end_date} \n")
+                     visit_detail_start_date) <= '{end_date}' \n")
 
   person_ids <- dbGetQuery(conn, person_sql)$person_id
   id_batches <- split(person_ids, ceiling(seq_along(person_ids)/batch_size))
