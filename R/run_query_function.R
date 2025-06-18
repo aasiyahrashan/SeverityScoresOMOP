@@ -204,10 +204,13 @@ get_score_variables <- function(conn, dialect, schema,
 
   # Batching person_ids
   # -- ICU stay or critical care
+  # And the visit had to have started before the end date filter.
   person_sql <- glue("
   SELECT DISTINCT person_id
   FROM {schema}.visit_detail
-  WHERE visit_detail_concept_id IN (581379, 32037) \n")
+  WHERE visit_detail_concept_id IN (581379, 32037)
+                     AND COALESCE(visit_detail_start_datetime,
+                     visit_detail_start_date) <= {end_date} \n")
 
   person_ids <- dbGetQuery(conn, person_sql)$person_id
   id_batches <- split(person_ids, ceiling(seq_along(person_ids)/batch_size))
