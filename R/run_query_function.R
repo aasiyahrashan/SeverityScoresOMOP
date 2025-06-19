@@ -71,9 +71,7 @@ get_score_variables <- function(conn, dialect, schema,
   pasted_visits_sql <-
     read_file(system.file("paste_disjoint_icu_visits.sql",
                           package = "SeverityScoresOMOP")) %>%
-    render(age_query = age_query,
-           start_date = single_quote(start_date),
-           end_date = single_quote(end_date))
+    render(age_query = age_query)
 
   # Getting list of all variable names
   variable_names <- read_delim(file = system.file("variable_names.csv",
@@ -174,7 +172,10 @@ get_score_variables <- function(conn, dialect, schema,
         window_measurement = window_query(window_start_point,
                                           "measurement_datetime",
                                           "measurement_date", cadence)) %>%
-      translate(tolower(dialect))
+      translate(tolower(dialect)) %>%
+      # There is a bug in SQL render which means dates need to be rendered after translating
+      render(start_date = single_quote(start_date),
+             end_date = single_quote(end_date))
 
     # Running the query
     cat("Printing GCS query \n")
@@ -197,7 +198,10 @@ get_score_variables <- function(conn, dialect, schema,
       all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
       all_icu_admission_datetime = all_id_vars(end_join_queries$alias, "icu_admission_datetime"),
       all_required_variables = all_required_variables) %>%
-    translate(tolower(dialect))
+    translate(tolower(dialect)) %>%
+    # There is a bug in SQL render which means dates need to be rendered after translating
+    render(start_date = single_quote(start_date),
+           end_date = single_quote(end_date))
 
   cat("Printing main query")
   cat(raw_sql)
