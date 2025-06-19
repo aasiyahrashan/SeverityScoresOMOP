@@ -21,9 +21,9 @@ lagged_visit_details AS (
     ) AS prev_end
   FROM @schema.visit_detail vd
     -- ICU stay or critical care
-    WHERE visit_detail_concept_id IN (581379, 32037)
+    WHERE vd.visit_detail_concept_id IN (581379, 32037)
     --  The visit had to have started before the end date filter.
-      AND COALESCE(visit_detail_start_datetime, visit_detail_start_date) <= @end_date
+      AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= @end_date
       AND vd.person_id IN (@person_ids)
 ),
 grouped_visits AS (
