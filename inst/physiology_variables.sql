@@ -9,6 +9,7 @@ SELECT adm.person_id
        --- This is no longer the original visit detail - it's just an ICU stay ID,
        --- since disjoint visits were pasted together.
        ,adm.visit_detail_id
+       ,adm.person_source_value
        ,adm.age
        ,adm.gender
        ,adm.hospital_admission_datetime
