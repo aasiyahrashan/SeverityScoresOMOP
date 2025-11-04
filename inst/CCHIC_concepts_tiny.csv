@@ -1,0 +1,11 @@
+score,short_name,table,concept_id,omop_variable,concept_id_value,name_of_value,additional_filter_variable_name,additional_filter_value,Note
+APACHE II,rr,Measurement,4108446,value_as_number,,,measurement_source_value,R VENT RESP RATE OBSERVED,
+APACHE II,tidal_volume,Measurement,4029625,value_as_number,,,measurement_source_value,R VENT TIDAL VOLUME OBSERVED,Tidal volume for ventilation times. Only want ICU tidal volumes not anaesthetic ones.
+APACHE II,comorbidity,Condition,4267414,,,,,,"NOT CERTAIN THESE ARE CORRECT, NEED TO BE CHECKED"
+APACHE II,renal_replacement,Condition,37018292,,,,,,"Only code I could find, still not happy."
+APACHE II,ventilation,Procedure,4230167,,,,procedure_source_value,R IP VENT MODE,"Epic ventilation mode. Filtering by source, because not all vent modes mapped to this concept are useful. not part of APACHE II"
+APACHE II,device_et_tube,Device,4097216,,,,,,Endotracheal tube
+APACHE II,device_trache,Device,4044008,,,,,,Tracheostomy
+APACHE II,sedation_string,Drug,propofol,concept_name,,,,,
+APACHE II,sedation_ancestor,Drug,753626,ancestor_concept_id,,,,,test ancestor search for drugs
+APACHE II,ami_ancestor_search,Condition,45538370,ancestor_concept_id,,,,,test ancestor search for conditions
