@@ -62,6 +62,7 @@ with_query <- function(concepts, table_name, variable_names,
   	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.hospital_discharge_datetime)))
   	AND {window} >= @first_window
   	AND {window} <= @last_window
+  	AND t.person_id IN (@person_ids)
   	)
   	, {variable_names$alias} as (
   	--- selecting non-duplicated values and aggregating
@@ -171,6 +172,7 @@ drug_with_query <- function(concepts, variable_names,
           INNER JOIN @schema.concept c
           ON c.concept_id = t.drug_concept_id
           WHERE {drugs_where_clause}
+          AND t.person_id IN (@person_ids)
       ) base
       --- selecting non-duplicated values
       WHERE rn = 1) t_w
