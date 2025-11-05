@@ -149,10 +149,22 @@ get_score_variables <- function(conn, dialect, schema,
                                            prev_alias)) %>%
     ungroup()
 
+  # Drop table statements
+  drop_table_statements <-
+    concepts %>%
+    distinct(table) %>%
+    # Need to get alias of the previous table for the timing join, if it exists.
+    left_join(variable_names %>% select(table, alias),
+              by = "table") %>%
+    mutate(drop_table_query = glue("DROP TABLE {alias}_non_aggregated; \n
+                                   DROP TABLE {alias};"))
+
   # Combining each query type into a string
   all_with_queries <- glue_collapse(with_queries_per_table,
                                     sep = "\n")
   all_end_join_queries <- glue_collapse(end_join_queries$end_join_query,
+                                        sep = "\n")
+  all_drop_table_statements <- glue_collapse(drop_table_statements$drop_table_query,
                                         sep = "\n")
   # All required variables for the queries
   all_required_variables <- all_required_variables_query(concepts)
@@ -197,6 +209,7 @@ get_score_variables <- function(conn, dialect, schema,
       all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),
       all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
       all_icu_admission_datetime = all_id_vars(end_join_queries$alias, "icu_admission_datetime"),
+      all_drop_table_statements = all_drop_table_statements,
       all_required_variables = all_required_variables) %>%
     translate(tolower(dialect)) %>%
     # There is a bug in SQL render which means dates need to be rendered after translating

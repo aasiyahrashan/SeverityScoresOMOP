@@ -58,4 +58,7 @@ SELECT adm.person_id
       ON COALESCE(@all_person_id) = adm.person_id
       AND COALESCE(@all_icu_admission_datetime) = adm.icu_admission_datetime
       WHERE COALESCE(@all_time_in_icu) IS NOT NULL
-      ORDER BY adm.person_id, adm.icu_admission_datetime, COALESCE(@all_time_in_icu)
+      ORDER BY adm.person_id, adm.icu_admission_datetime, COALESCE(@all_time_in_icu);
+
+DROP table icu_admission_details_multiple_visits;
+@all_drop_table_statements
