@@ -38,7 +38,7 @@ with_query <- function(concepts, table_name, variable_names,
   # Constructing main query
   with_query <-
     glue("
-    , {variable_names$alias}_non_aggregated as (
+    CREATE TEMP TABLE {variable_names$alias}_non_aggregated as
     SELECT
      t.*
      ,adm.icu_admission_datetime
@@ -61,10 +61,8 @@ with_query <- function(concepts, table_name, variable_names,
   	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.hospital_admission_datetime)
   	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.hospital_discharge_datetime)))
   	AND {window} >= @first_window
-  	AND {window} <= @last_window
-  	AND t.person_id IN (@person_ids)
-  	)
-  	, {variable_names$alias} as (
+  	AND {window} <= @last_window;
+  	CREATE TEMP TABLE {variable_names$alias} as
   	--- selecting non-duplicated values and aggregating
   	SELECT
   	t.person_id
@@ -82,8 +80,7 @@ with_query <- function(concepts, table_name, variable_names,
     WHERE rn = 1
     GROUP BY t.person_id
     ,t.icu_admission_datetime
-  	,t.time_in_icu
-  	)
+  	,t.time_in_icu;
      ")
   with_query
 }
@@ -127,61 +124,43 @@ drug_with_query <- function(concepts, variable_names,
 
   drug_with_query <-
     glue("
-    , drg as (
-      --- Note, this query will double count overlaps.
-      --- If a person has two versions of a single drug, with overalapping start and end dates,
-      --- the drug will be double counted.
-      SELECT
-          t_w.person_id
-           -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
-           -- So not selecting them. Identifying visits by person ID + admission time
-          ,t_w.icu_admission_datetime
-          ,time_in_icu
-          {variables}
-      --- Filtering whole table for string matches so don't need to lateral join the whole thing
-      FROM (
-          SELECT *
-          FROM (
-          SELECT
-          adm.person_id
-          ,adm.icu_admission_datetime
-          ,t.drug_exposure_id
-          ,t.drug_concept_id
-          ,c.concept_name
-          ,c.concept_code
-          --- The admission details table has multiple rows per pasted visit detail.
-          --- So if visit_detail_id is null in either table, the time join returns multiple identical rows.
-        	--- Making sure I only get one row back at the end, here. The variable I order by does not matter.
-          ,ROW_NUMBER() OVER (
-              PARTITION BY t.drug_exposure_id
-              ORDER BY t.person_id
-            ) AS rn
-          ,{window_start} as drug_start
-          ,{window_end} as drug_end
-          FROM icu_admission_details_multiple_visits adm
-          INNER JOIN @schema.drug_exposure t
-          ON adm.person_id = t.person_id
-          -- Visit occurrence is not always linked to the other tables.
-        	-- So joining by time instead.
-        	AND (adm.visit_occurrence_id = t.visit_occurrence_id
-        	      OR ((t.visit_occurrence_id IS NULL)
-        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.hospital_admission_datetime)
-        	          AND (coalesce(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.hospital_discharge_datetime)))
-                AND ({window_start} >= @first_window OR {window_end} >= @first_window)
-                AND ({window_start} <= @last_window OR {window_end} <= @last_window)
-          INNER JOIN @schema.concept c
-          ON c.concept_id = t.drug_concept_id
-          WHERE {drugs_where_clause}
-          AND t.person_id IN (@person_ids)
-      ) base
-      --- selecting non-duplicated values
-      WHERE rn = 1) t_w
+    CREATE TEMP TABLE drg_non_aggregated_tmp AS
+    SELECT *
+         , ROW_NUMBER() OVER (
+             PARTITION BY t.drug_exposure_id
+             ORDER BY t.person_id
+           ) AS rn
+         , {window_start} AS drug_start
+         , {window_end} AS drug_end
+    FROM icu_admission_details_multiple_visits adm
+    INNER JOIN @schema.drug_exposure t
+      ON adm.person_id = t.person_id
+      AND (adm.visit_occurrence_id = t.visit_occurrence_id
+           OR ((t.visit_occurrence_id IS NULL)
+               AND (COALESCE(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.hospital_admission_datetime)
+               AND (COALESCE(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.hospital_discharge_datetime)))
+    INNER JOIN @schema.concept c
+      ON c.concept_id = t.drug_concept_id
+    WHERE {drugs_where_clause}
+      AND t.person_id IN (@person_ids)
+      AND ({window_start} >= @first_window OR {window_end} >= @first_window)
+      AND ({window_start} <= @last_window OR {window_end} <= @last_window);
+
+      CREATE TEMP TABLE drg_tmp AS
+      SELECT t_w.person_id
+     ,t_w.icu_admission_datetime
+     ,time_in_icu
+     {variables}
+     FROM (
+    SELECT *
+    FROM drg_non_aggregated
+    WHERE rn = 1
+      ) t_w
       {drug_join}
       GROUP BY
       t_w.person_id
       ,t_w.icu_admission_datetime
-      ,time_in_icu
-      )
+      ,time_in_icu;
          ")
 
   drug_with_query
