@@ -234,7 +234,7 @@ get_score_variables <- function(conn, dialect, schema,
       render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
 
     # Getting the data
-    results[[i]] <- dbGetQuery(conn, raw_sql_batch)
+    results[[i]] <- run_multiple_queries(conn, raw_sql_batch)
 
     # Running GCS query
     if(nrow(gcs_concepts) > 0) {
@@ -244,7 +244,7 @@ get_score_variables <- function(conn, dialect, schema,
       gcs_raw_sql_batch <- gcs_raw_sql %>%
         render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
 
-      gcs_results[[i]] <- dbGetQuery(conn, gcs_raw_sql_batch)
+      gcs_results[[i]] <- run_multiple_queries(conn, gcs_raw_sql_batch)
     }
   }
 

@@ -43,13 +43,6 @@ with_query <- function(concepts, table_name, variable_names,
      t.*
      ,adm.icu_admission_datetime
   	,{window} as time_in_icu
-  	--- The admission details table has multiple rows per pasted visit detail.
-  	--- So if visit_detail_id is null in either table, the time join returns multiple identical rows.
-  	--- Making sure I only get one row back at the end, here. The variable I order by does not matter.
-  	, ROW_NUMBER() OVER (
-      PARTITION BY t.{variable_names$id_var}
-      ORDER BY t.person_id
-    ) AS rn
      FROM icu_admission_details_multiple_visits adm
      INNER JOIN @schema.{variable_names$db_table_name} t
     -- making sure the visits match up, and filtering by number of days in ICU
@@ -124,12 +117,8 @@ drug_with_query <- function(concepts, variable_names,
 
   drug_with_query <-
     glue("
-    CREATE TEMP TABLE drg_non_aggregated_tmp AS
+    CREATE TEMP TABLE drg_non_aggregated AS
     SELECT *
-         , ROW_NUMBER() OVER (
-             PARTITION BY t.drug_exposure_id
-             ORDER BY t.person_id
-           ) AS rn
          , {window_start} AS drug_start
          , {window_end} AS drug_end
     FROM icu_admission_details_multiple_visits adm
@@ -146,7 +135,7 @@ drug_with_query <- function(concepts, variable_names,
       AND ({window_start} >= @first_window OR {window_end} >= @first_window)
       AND ({window_start} <= @last_window OR {window_end} <= @last_window);
 
-      CREATE TEMP TABLE drg_tmp AS
+      CREATE TEMP TABLE drg AS
       SELECT t_w.person_id
      ,t_w.icu_admission_datetime
      ,time_in_icu
@@ -154,7 +143,6 @@ drug_with_query <- function(concepts, variable_names,
      FROM (
     SELECT *
     FROM drg_non_aggregated
-    WHERE rn = 1
       ) t_w
       {drug_join}
       GROUP BY
