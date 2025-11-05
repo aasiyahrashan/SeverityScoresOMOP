@@ -44,15 +44,21 @@ with_query <- function(concepts, table_name, variable_names,
      ,adm.icu_admission_datetime
   	,{window} as time_in_icu
      FROM icu_admission_details_multiple_visits adm
-     INNER JOIN @schema.{variable_names$db_table_name} t
+     INNER JOIN (
+    SELECT
+        *,
+        COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date
+        ,COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}) AS table_datetime
+    FROM @schema.{variable_names$db_table_name}
+) t
     -- making sure the visits match up, and filtering by number of days in ICU
   	ON adm.person_id = t.person_id
   	-- Visit occurrence is not always linked to the other tables.
   	-- So joining by time instead.
   	AND (adm.visit_occurrence_id = t.visit_occurrence_id
   	      OR ((t.visit_occurrence_id IS NULL)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) >= adm.hospital_admission_datetime)
-  	          AND (coalesce(t.{variable_names$start_datetime_var}, t.{variable_names$start_date_var}) < adm.hospital_discharge_datetime)))
+  	          AND (t.table_datetime >= adm.hospital_admission_datetime)
+  	          AND (t.table_datetime < adm.hospital_discharge_datetime)))
   	AND {window} >= @first_window
   	AND {window} <= @last_window;
   	CREATE TEMP TABLE {variable_names$alias} as
@@ -70,7 +76,6 @@ with_query <- function(concepts, table_name, variable_names,
     -- Slightly odd alias, but using it to match drug table
     INNER JOIN @schema.concept t_w
     ON t_w.concept_id = t.{variable_names$concept_id_var}
-    WHERE rn = 1
     GROUP BY t.person_id
     ,t.icu_admission_datetime
   	,t.time_in_icu;

@@ -5,6 +5,8 @@
 #' @param sql_script The script to be executed
 #' @importFrom DBI dbGetQuery dbExecute
 run_multiple_queries <- function(con, sql_script) {
+  start_time <- Sys.time()
+
   # Split SQL on semicolons (ignoring those inside quotes)
   statements <- unlist(strsplit(sql_script, ";", fixed = TRUE))
   for (stmt in statements) {
@@ -20,5 +22,8 @@ run_multiple_queries <- function(con, sql_script) {
       result <- NULL
     }
   }
+  end_time <- Sys.time()
+  message("Total execution time: ", round(difftime(end_time, start_time, units = "secs"), 2), " seconds")
+
   return(result)  # returns result from the last SELECT if present
 }

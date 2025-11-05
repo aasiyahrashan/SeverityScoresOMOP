@@ -55,9 +55,9 @@ window_query <- function(window_start_point, time_variable,
   ifelse(
     window_start_point == "calendar_date",
     # Returns one row per day based on calendar date rather than admission time.
-    glue(" DATEDIFF(dd, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable}))"),
+    glue(" DATEDIFF(dd, adm.icu_admission_datetime, t.table_date)"),
     # Uses admission date as starting point, returns rows based on cadence argument.
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, COALESCE(t.{time_variable}, t.{date_variable})) / ({cadence} * 60))"))
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, t.table_datetime / ({cadence} * 60))"))
 }
 
 # Builds the age query
