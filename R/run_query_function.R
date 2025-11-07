@@ -156,8 +156,7 @@ get_score_variables <- function(conn, dialect, schema,
     # Need to get alias of the previous table for the timing join, if it exists.
     left_join(variable_names %>% select(table, alias),
               by = "table") %>%
-    mutate(drop_table_query = glue("DROP TABLE {alias}_non_aggregated; \n
-                                   DROP TABLE {alias};"))
+    mutate(drop_table_query = glue("DROP TABLE {alias};"))
 
   # Combining each query type into a string
   all_with_queries <- glue_collapse(with_queries_per_table,
