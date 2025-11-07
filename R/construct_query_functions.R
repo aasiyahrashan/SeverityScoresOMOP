@@ -75,9 +75,9 @@ age_query <- function(age_method, dialect) {
     " YEAR(icu_admission_datetime) - year_of_birth AS age")
 }
 
-# Builds the 'WHERE' query for the drug table, to ensure the generate_series SQL
+# Builds the 'WHERE' query to make sure we only filter by required variables SQL
 # function is only called for patients and timepoints with the drugs of interest.
-drugs_where_clause <- function(concepts,
+where_clause <- function(concepts,
                                      variable_names,
                                      table_name) {
 

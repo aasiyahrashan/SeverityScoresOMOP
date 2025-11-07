@@ -118,8 +118,7 @@ drug_with_query <- function(concepts, variable_names,
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
-  drugs_where_clause = drugs_where_clause(concepts,
-                                          variable_names, "Drug")
+  where_clause = where_clause(concepts, variable_names, "Drug")
 
   # Drug join
   drug_join <- translate_drug_join(dialect)
@@ -139,7 +138,7 @@ drug_with_query <- function(concepts, variable_names,
                AND (COALESCE(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.hospital_discharge_datetime)))
     INNER JOIN @schema.concept c
       ON c.concept_id = t.drug_concept_id
-    WHERE {drugs_where_clause}
+    WHERE {where_clause}
       AND t.person_id IN (@person_ids)
       AND ({window_start} >= @first_window OR {window_end} >= @first_window)
       AND ({window_start} <= @last_window OR {window_end} <= @last_window);
