@@ -32,6 +32,11 @@ with_query <- function(concepts, table_name, variable_names,
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
+
+  # Where query
+  where_clause = drugs_where_clause(concepts,
+                                          variable_names, table_name)
+
   # Units of measure join.
   units_of_measure_query <- units_of_measure_query(table_name)
 
@@ -41,16 +46,12 @@ with_query <- function(concepts, table_name, variable_names,
     -- filter by person and concept ID to reduce table size
     CREATE TEMP TABLE {variable_names$alias}_filtered as
       SELECT
-        person_id,
-        {variable_names$concept_id_var},
-        {variable_names$unit_concept_id_var},
-        {variable_names$value_as_number_var},
+      *,
         COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date,
-        COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime,
-        visit_occurrence_id
+        COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime
       FROM @schema.{variable_names$db_table_name}
-      WHERE {variable_names$concept_id_var} IN ({concept_id_list})
-        AND person_id IN @person_ids;
+      WHERE {where_clause}
+        AND person_id IN (@person_ids);
 
 
     --- Filter by timestamp and create one row per time
@@ -70,6 +71,11 @@ with_query <- function(concepts, table_name, variable_names,
            AND t.table_datetime >= adm.hospital_admission_datetime
            AND t.table_datetime <  adm.hospital_discharge_datetime)
       )
+    {units_of_measure_query}
+    -- For string searching by concept name if required
+    -- Slightly odd alias, but using it to match drug table
+    INNER JOIN @schema.concept t_w
+    ON t_w.concept_id = t.{variable_names$concept_id_var}
     WHERE {window} >= @first_window
   	AND {window} <= @last_window
   	GROUP BY
@@ -77,48 +83,7 @@ with_query <- function(concepts, table_name, variable_names,
     adm.icu_admission_datetime,
     {window} ;
 
-    --- Filter by date (usually non-indexed)
-    CREATE TEMP TABLE {variable_names$alias}_non_aggregated as
-    SELECT
-     t.*
-     ,adm.icu_admission_datetime
-  	,{window} as time_in_icu
-     FROM icu_admission_details_multiple_visits adm
-     INNER JOIN {variable_names$alias}_filtered t
-    -- making sure the visits match up, and filtering by number of days in ICU
-  	ON adm.person_id = t.person_id
-  	-- Visit occurrence is not always linked to the other tables.
-  	-- So joining by time instead.
-  	AND (adm.visit_occurrence_id = t.visit_occurrence_id
-  	      OR ((t.visit_occurrence_id IS NULL)
-  	          AND (t.table_datetime >= adm.hospital_admission_datetime)
-  	          AND (t.table_datetime < adm.hospital_discharge_datetime)))
-  	WHERE {window} >= @first_window
-  	AND {window} <= @last_window;
-
-    -- drop filtered table to save space
-    DROP table {variable_names$alias}_filtered;
-
-    --- Aggregate so we get one row per timestamp
-  	CREATE TEMP TABLE {variable_names$alias} as
-  	--- selecting non-duplicated values and aggregating
-  	SELECT
-  	t.person_id
-  	-- can't rely on visit occurrence and visit detail IDs being linked to these tables.
-    -- So not selecting them. Identifying visits by person ID + admission time
-  	,t.icu_admission_datetime
-  	,t.time_in_icu
-    {variables}
-    FROM {variable_names$alias}_non_aggregated as t
-    {units_of_measure_query}
-    -- For string searching by concept name if required
-    -- Slightly odd alias, but using it to match drug table
-    INNER JOIN @schema.concept t_w
-    ON t_w.concept_id = t.{variable_names$concept_id_var}
-    GROUP BY t.person_id
-    ,t.icu_admission_datetime
-  	,t.time_in_icu;
-  	DROP TABLE {variable_names$alias}_non_aggregated;")
+  	DROP TABLE {variable_names$alias}_filtered;")
   with_query
 }
 
