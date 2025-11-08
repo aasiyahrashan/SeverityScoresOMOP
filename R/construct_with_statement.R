@@ -85,6 +85,7 @@ with_query <- function(concepts, table_name, variable_names,
     adm.icu_admission_datetime,
     {window} ;
 
+    ANALYZE {variable_names$alias};
   	DROP TABLE {variable_names$alias}_filtered;")
   with_query
 }
@@ -186,6 +187,8 @@ drug_with_query <- function(concepts, variable_names,
       t.person_id
       ,t.icu_admission_datetime
       ,gs.time_in_icu;
+
+      ANALYZE drg;
 
       DROP table drg_filtered;")
   drug_with_query

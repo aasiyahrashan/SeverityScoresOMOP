@@ -6,6 +6,7 @@
 #' @importFrom DBI dbGetQuery dbExecute
 run_multiple_queries <- function(con, sql_script) {
   start_time <- Sys.time()
+  result <- NULL
 
   # Split SQL on semicolons (ignoring those inside quotes)
   statements <- unlist(strsplit(sql_script, ";", fixed = TRUE))
@@ -19,7 +20,6 @@ run_multiple_queries <- function(con, sql_script) {
     } else {
       message("Running statement: ", substr(stmt, 1, 60), "...")
       dbExecute(con, stmt)
-      result <- NULL
     }
   }
   end_time <- Sys.time()

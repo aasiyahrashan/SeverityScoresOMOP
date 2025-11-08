@@ -3,7 +3,7 @@
 @all_with_queries
 
 --- De-duplicating, but without the original visit detail IDs
-CREATE icu_admission_details as
+CREATE TEMP TABLE icu_admission_details as
    SELECT
   	d.person_id
   	,p.person_source_value
