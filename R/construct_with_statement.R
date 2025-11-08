@@ -21,8 +21,8 @@ with_query <- function(concepts, table_name, variable_names,
   # Windowing query. Visit detail window time is always 0, since it's the beginning of the admission
   if(table_name != "Visit Detail"){
     window <- window_query(window_start_point,
-                           variable_names$start_datetime_var,
-                           variable_names$start_date_var,
+                           "t.table_datetime",
+                           "t.table_date",
                            cadence)
   } else {
     window <- 0
@@ -34,8 +34,7 @@ with_query <- function(concepts, table_name, variable_names,
                                variable_names$id_var)
 
   # Where query
-  where_clause = drugs_where_clause(concepts,
-                                          variable_names, table_name)
+  where_clause = where_clause(concepts, variable_names, table_name)
 
   # Units of measure join.
   units_of_measure_query <- units_of_measure_query(table_name)
@@ -43,7 +42,7 @@ with_query <- function(concepts, table_name, variable_names,
   # Constructing main query
   with_query <-
     glue("
-    -- filter by person and concept ID to reduce table size
+    -- {table_name} Filter by person and concept ID to reduce table size
     CREATE TEMP TABLE {variable_names$alias}_filtered as
       SELECT
       *,
@@ -52,15 +51,15 @@ with_query <- function(concepts, table_name, variable_names,
       FROM @schema.{variable_names$db_table_name}
       WHERE {where_clause}
         AND person_id IN (@person_ids);
-
+    ANALYZE {variable_names$alias}_filtered;
 
     --- Filter by timestamp and create one row per time
     CREATE TEMP TABLE {variable_names$alias} as
     SELECT
        t.person_id,
        adm.icu_admission_datetime,
-  	   ,{window} as time_in_icu
-         {variables}
+  	   {window} as time_in_icu
+       {variables}
 
     FROM icu_admission_details_multiple_visits adm
     INNER JOIN {variable_names$alias}_filtered t
@@ -106,60 +105,86 @@ drug_with_query <- function(concepts, variable_names,
 
   # Window query
   window_start <- window_query(window_start_point,
-                               variable_names$start_datetime_var,
-                               variable_names$start_date_var,
+                               "t.table_datetime",
+                               "t.table_date",
                                cadence)
   window_end <- window_query(window_start_point,
-                             variable_names$end_datetime_var,
-                             variable_names$end_date_var,
+                             "t.table_end_datetime",
+                             "t.table_end_date",
                              cadence)
 
   # Variables query
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
-  where_clause = where_clause(concepts, variable_names, "Drug")
-
-  # Drug join
+  where_clause <- where_clause(concepts, variable_names, "Drug")
   drug_join <- translate_drug_join(dialect)
 
   drug_with_query <-
     glue("
-    CREATE TEMP TABLE drg_non_aggregated AS
-    SELECT *
-         , {window_start} AS drug_start
-         , {window_end} AS drug_end
-    FROM icu_admission_details_multiple_visits adm
-    INNER JOIN @schema.drug_exposure t
-      ON adm.person_id = t.person_id
-      AND (adm.visit_occurrence_id = t.visit_occurrence_id
-           OR ((t.visit_occurrence_id IS NULL)
-               AND (COALESCE(t.drug_exposure_start_datetime, t.drug_exposure_start_date) >= adm.hospital_admission_datetime)
-               AND (COALESCE(t.drug_exposure_start_datetime, t.drug_exposure_start_date) < adm.hospital_discharge_datetime)))
+    -- {table_name} Filter by person and concept because they're indexed
+    CREATE TEMP TABLE drg_filtered AS
+    SELECT
+    t.person_id,
+    t.visit_occurrence_id,
+    t.drug_exposure_id,
+    t.drug_concept_id,
+    c.concept_name,
+    c.concept_code,
+    COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date,
+    COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime,
+    COALESCE({variable_names$end_datetime_var}::date, {variable_names$end_date_var}) AS table_end_date,
+    COALESCE({variable_names$end_datetime_var}, {variable_names$end_date_var}::timestamp) AS table_end_datetime
+    FROM @schema.drug_exposure t
     INNER JOIN @schema.concept c
       ON c.concept_id = t.drug_concept_id
-    WHERE {where_clause}
-      AND t.person_id IN (@person_ids)
-      AND ({window_start} >= @first_window OR {window_end} >= @first_window)
-      AND ({window_start} <= @last_window OR {window_end} <= @last_window);
+    WHERE t.person_id IN (@person_ids)
+    AND {where_clause};
 
-      CREATE TEMP TABLE drg AS
-      SELECT t_w.person_id
-     ,t_w.icu_admission_datetime
-     ,time_in_icu
-     {variables}
-     FROM (
-    SELECT *
-    FROM drg_non_aggregated
+    ANALYZE drg_filtered;
+
+    -- Now summarise variables
+    CREATE TEMP TABLE drg AS
+    --- Note, this query will double count overlaps.
+      --- If a person has two versions of a single drug, with overalapping start and end dates,
+      --- the drug will be double counted.
+      SELECT
+          t_w.person_id
+           -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
+           -- So not selecting them. Identifying visits by person ID + admission time
+          ,t_w.icu_admission_datetime
+          ,gs.time_in_icu
+          {variables}
+      --- Filtering whole table for string matches so don't need to lateral join the whole thing
+      FROM (
+          SELECT
+          adm.person_id,
+          adm.icu_admission_datetime,
+          t.drug_exposure_id,
+          t.drug_concept_id,
+          t.concept_name,
+          t.concept_code,
+          {window_start} AS drug_start,
+          {window_end} AS drug_end
+          FROM icu_admission_details_multiple_visits adm
+          INNER JOIN drg_filtered t
+          ON adm.person_id = t.person_id
+          -- Visit occurrence is not always linked to the other tables.
+        	-- So joining by time instead.
+        	AND (adm.visit_occurrence_id = t.visit_occurrence_id
+        	      OR ((t.visit_occurrence_id IS NULL)
+        	          AND (t.table_datetime >= adm.hospital_admission_datetime)
+        	          AND (t.table_datetime < adm.hospital_discharge_datetime)))
+                AND ({window_start} >= @first_window OR {window_end} >= @first_window)
+                AND ({window_start} <= @last_window OR {window_end} <= @last_window)
       ) t_w
       {drug_join}
       GROUP BY
       t_w.person_id
       ,t_w.icu_admission_datetime
-      ,time_in_icu;
-      DROP TABLE drg_non_aggregated;
-         ")
+      ,gs.time_in_icu;
 
+      DROP table drg_filtered;")
   drug_with_query
 }
 end_join_query <- function(table_name, variable_names, prev_alias){

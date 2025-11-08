@@ -55,9 +55,9 @@ window_query <- function(window_start_point, time_variable,
   ifelse(
     window_start_point == "calendar_date",
     # Returns one row per day based on calendar date rather than admission time.
-    glue(" DATEDIFF(dd, adm.icu_admission_datetime, t.table_date)"),
+    glue(" DATEDIFF(dd, adm.icu_admission_datetime, {date_variable})"),
     # Uses admission date as starting point, returns rows based on cadence argument.
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, t.table_datetime / ({cadence} * 60))"))
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, {time_variable} / ({cadence} * 60))"))
 }
 
 # Builds the age query
@@ -139,7 +139,7 @@ where_clause <- function(concepts,
   # Combine with OR, or use 'false' if none are present
   # If no concepts, I want no row returned. So I make the condition say 'where false'.
   combined_expression <- if (length(expressions) > 0) {
-    paste(expressions, collapse = " OR ")
+   paste0("(", paste(expressions, collapse = " OR "), ")")
   } else {
     "false"
   }
@@ -323,7 +323,7 @@ translate_drug_join <- function(dialect){
       ,t_w.drug_end
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
-      ) AS time_in_icu on TRUE")
+      ) AS gs(time_in_icu) ON TRUE")
   }
 
   if (dialect == "sql server"){

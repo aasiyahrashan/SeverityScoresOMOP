@@ -70,8 +70,7 @@ get_score_variables <- function(conn, dialect, schema,
   # This pastes visit details together.
   pasted_visits_sql <-
     read_file(system.file("paste_disjoint_icu_visits.sql",
-                          package = "SeverityScoresOMOP")) %>%
-    render(age_query = age_query)
+                          package = "SeverityScoresOMOP"))
 
   # Getting list of all variable names
   variable_names <- read_delim(file = system.file("variable_names.csv",
@@ -156,7 +155,7 @@ get_score_variables <- function(conn, dialect, schema,
     # Need to get alias of the previous table for the timing join, if it exists.
     left_join(variable_names %>% select(table, alias),
               by = "table") %>%
-    mutate(drop_table_query = glue("DROP TABLE {alias};"))
+    mutate(drop_table_query = glue("DROP table {alias};"))
 
   # Combining each query type into a string
   all_with_queries <- glue_collapse(with_queries_per_table,
@@ -203,6 +202,7 @@ get_score_variables <- function(conn, dialect, schema,
       first_window = first_window,
       last_window = last_window,
       schema = schema,
+      age_query = age_query,
       all_with_queries = all_with_queries,
       all_end_join_queries = all_end_join_queries,
       all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),

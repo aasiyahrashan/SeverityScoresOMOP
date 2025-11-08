@@ -89,3 +89,5 @@ AND (vo.visit_occurrence_id = vd.visit_occurrence_id
 WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= @start_date
 	AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= @end_date
 ;
+
+ANALYZE icu_admission_details_multiple_visits;
