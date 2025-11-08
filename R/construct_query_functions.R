@@ -247,7 +247,7 @@ variables_query <- function(concepts,
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
       concept_id = glue_collapse(tolower(unique(concept_id)),
-                                      sep = glue("%' OR LOWER(t_w.{omop_variable}) LIKE '%")),
+                                      sep = glue("%' OR LOWER({omop_variable}) LIKE '%")),
       additional_filter_value = glue(
         "'",
         glue_collapse(additional_filter_value, sep = "', '"),
@@ -261,7 +261,7 @@ variables_query <- function(concepts,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN LOWER(t_w.{omop_variable}) LIKE '%{concept_id}%'
+        ", COUNT ( CASE WHEN LOWER({omop_variable}) LIKE '%{concept_id}%'
            {additional_filter_query}
            THEN {table_id_var}
            END ) AS count_{short_name}"))

@@ -45,12 +45,19 @@ with_query <- function(concepts, table_name, variable_names,
     -- {table_name} Filter by person and concept ID to reduce table size
     CREATE TEMP TABLE {variable_names$alias}_filtered as
       SELECT
-      *,
-        COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date,
-        COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime
-      FROM @schema.{variable_names$db_table_name}
+      t.*,
+      c.concept_name,
+      c.concept_code,
+      COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date,
+      COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime
+      FROM @schema.{variable_names$db_table_name} t
+    -- For string searching by concept name if required
+    -- Slightly odd alias, but using it to match drug table
+    INNER JOIN @schema.concept c
+    ON c.concept_id = t.{variable_names$concept_id_var}
       WHERE {where_clause}
         AND person_id IN (@person_ids);
+
     ANALYZE {variable_names$alias}_filtered;
 
     --- Filter by timestamp and create one row per time
@@ -71,10 +78,6 @@ with_query <- function(concepts, table_name, variable_names,
            AND t.table_datetime <  adm.hospital_discharge_datetime)
       )
     {units_of_measure_query}
-    -- For string searching by concept name if required
-    -- Slightly odd alias, but using it to match drug table
-    INNER JOIN @schema.concept t_w
-    ON t_w.concept_id = t.{variable_names$concept_id_var}
     WHERE {window} >= @first_window
   	AND {window} <= @last_window
   	GROUP BY
