@@ -3,7 +3,7 @@
 @all_with_queries
 
 --- De-duplicating, but without the original visit detail IDs
-WITH icu_admission_details as (
+CREATE icu_admission_details as
    SELECT
   	d.person_id
   	,p.person_source_value
@@ -32,8 +32,9 @@ WITH icu_admission_details as (
   INNER JOIN @schema.person p ON d.person_id = p.person_id
   INNER JOIN @schema.concept c ON p.gender_concept_id = c.concept_id
   LEFT JOIN @schema.care_site cs ON p.care_site_id = cs.care_site_id
-  LEFT JOIN @schema.death death ON p.person_id = death.person_id
-)
+  LEFT JOIN @schema.death death ON p.person_id = death.person_id;
+
+ANALYZE icu_admission_details;
 
 SELECT adm.person_id
        ,adm.visit_occurrence_id
@@ -61,4 +62,5 @@ SELECT adm.person_id
       ORDER BY adm.person_id, adm.icu_admission_datetime, COALESCE(@all_time_in_icu);
 
 DROP table icu_admission_details_multiple_visits;
+DROP table icu_admission_details;
 @all_drop_table_statements
