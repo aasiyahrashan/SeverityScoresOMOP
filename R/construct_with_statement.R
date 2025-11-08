@@ -108,12 +108,12 @@ drug_with_query <- function(concepts, variable_names,
 
   # Window query
   window_start <- window_query(window_start_point,
-                               "t.table_datetime",
-                               "t.table_date",
+                               "i.table_datetime",
+                               "i.table_date",
                                cadence)
   window_end <- window_query(window_start_point,
-                             "t.table_end_datetime",
-                             "t.table_end_date",
+                             "i.table_end_datetime",
+                             "i.table_end_date",
                              cadence)
 
   # Variables query
@@ -152,10 +152,10 @@ drug_with_query <- function(concepts, variable_names,
       --- If a person has two versions of a single drug, with overalapping start and end dates,
       --- the drug will be double counted.
       SELECT
-          t_w.person_id
+          t.person_id
            -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
            -- So not selecting them. Identifying visits by person ID + admission time
-          ,t_w.icu_admission_datetime
+          ,t.icu_admission_datetime
           ,gs.time_in_icu
           {variables}
       --- Filtering whole table for string matches so don't need to lateral join the whole thing
@@ -163,28 +163,28 @@ drug_with_query <- function(concepts, variable_names,
           SELECT
           adm.person_id,
           adm.icu_admission_datetime,
-          t.drug_exposure_id,
-          t.drug_concept_id,
-          t.concept_name,
-          t.concept_code,
+          i.drug_exposure_id,
+          i.drug_concept_id,
+          i.concept_name,
+          i.concept_code,
           {window_start} AS drug_start,
           {window_end} AS drug_end
           FROM icu_admission_details_multiple_visits adm
-          INNER JOIN drg_filtered t
-          ON adm.person_id = t.person_id
+          INNER JOIN drg_filtered i
+          ON adm.person_id = i.person_id
           -- Visit occurrence is not always linked to the other tables.
         	-- So joining by time instead.
-        	AND (adm.visit_occurrence_id = t.visit_occurrence_id
-        	      OR ((t.visit_occurrence_id IS NULL)
-        	          AND (t.table_datetime >= adm.hospital_admission_datetime)
-        	          AND (t.table_datetime < adm.hospital_discharge_datetime)))
+        	AND (adm.visit_occurrence_id = i.visit_occurrence_id
+        	      OR ((i.visit_occurrence_id IS NULL)
+        	          AND (i.table_datetime >= adm.hospital_admission_datetime)
+        	          AND (i.table_datetime < adm.hospital_discharge_datetime)))
                 AND ({window_start} >= @first_window OR {window_end} >= @first_window)
                 AND ({window_start} <= @last_window OR {window_end} <= @last_window)
-      ) t_w
+      ) t
       {drug_join}
       GROUP BY
-      t_w.person_id
-      ,t_w.icu_admission_datetime
+      t.person_id
+      ,t.icu_admission_datetime
       ,gs.time_in_icu;
 
       DROP table drg_filtered;")

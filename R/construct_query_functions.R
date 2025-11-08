@@ -247,7 +247,7 @@ variables_query <- function(concepts,
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
       concept_id = glue_collapse(tolower(unique(concept_id)),
-                                      sep = glue("%' OR LOWER({omop_variable}) LIKE '%")),
+                                      sep = glue("%' OR LOWER(t.{omop_variable}) LIKE '%")),
       additional_filter_value = glue(
         "'",
         glue_collapse(additional_filter_value, sep = "', '"),
@@ -261,7 +261,7 @@ variables_query <- function(concepts,
                 glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
       count_query = glue(
-        ", COUNT ( CASE WHEN LOWER({omop_variable}) LIKE '%{concept_id}%'
+        ", COUNT ( CASE WHEN LOWER(t.{omop_variable}) LIKE '%{concept_id}%'
            {additional_filter_query}
            THEN {table_id_var}
            END ) AS count_{short_name}"))
@@ -319,8 +319,8 @@ translate_drug_join <- function(dialect){
     "LEFT JOIN LATERAL
       --- For each row in the table, creating
       generate_series(
-       t_w.drug_start
-      ,t_w.drug_end
+       t.drug_start
+      ,t.drug_end
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS gs(time_in_icu) ON TRUE")
@@ -331,8 +331,8 @@ translate_drug_join <- function(dialect){
     "OUTER APPLY
       --- For each row in the table, creating
       generate_series(
-      t_w.drug_start
-      , t_w.drug_end
+      t.drug_start
+      , t.drug_end
       --- Every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS time_in_icu")
