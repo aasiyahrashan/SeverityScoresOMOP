@@ -126,7 +126,7 @@ drug_with_query <- function(concepts, variable_names,
 
   drug_with_query <-
     glue("
-    -- {table_name} Filter by person and concept because they're indexed
+    -- Drug Filter by person and concept because they're indexed
     CREATE TEMP TABLE drg_filtered AS
     SELECT
     t.person_id,
