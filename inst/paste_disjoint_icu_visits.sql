@@ -90,4 +90,7 @@ WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= @s
 	AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= @end_date
 ;
 
+CREATE INDEX idx_icu_person_admit ON
+            icu_admission_details_multiple_visits (person_id,
+            icu_admission_datetime);
 ANALYZE icu_admission_details_multiple_visits;

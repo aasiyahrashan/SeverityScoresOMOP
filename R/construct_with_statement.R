@@ -43,7 +43,7 @@ with_query <- function(concepts, table_name, variable_names,
   with_query <-
     glue("
     -- {table_name} Filter by person and concept ID to reduce table size
-    CREATE TEMP TABLE {variable_names$alias}_filtered as
+    , {variable_names$alias}_filtered as (
       SELECT
       t.*,
       c.concept_name,
@@ -56,12 +56,10 @@ with_query <- function(concepts, table_name, variable_names,
     INNER JOIN @schema.concept c
     ON c.concept_id = t.{variable_names$concept_id_var}
       WHERE {where_clause}
-        AND person_id IN (@person_ids);
-
-    ANALYZE {variable_names$alias}_filtered;
+        AND person_id IN (@person_ids))
 
     --- Filter by timestamp and create one row per time
-    CREATE TEMP TABLE {variable_names$alias} as
+    , {variable_names$alias} as (
     SELECT
        t.person_id,
        adm.icu_admission_datetime,
@@ -83,10 +81,7 @@ with_query <- function(concepts, table_name, variable_names,
   	GROUP BY
     t.person_id,
     adm.icu_admission_datetime,
-    {window} ;
-
-    ANALYZE {variable_names$alias};
-  	DROP TABLE {variable_names$alias}_filtered;")
+    {window}) ")
   with_query
 }
 
@@ -127,7 +122,7 @@ drug_with_query <- function(concepts, variable_names,
   drug_with_query <-
     glue("
     -- Drug Filter by person and concept because they're indexed
-    CREATE TEMP TABLE drg_filtered AS
+    , drg_filtered AS (
     SELECT
     t.person_id,
     t.visit_occurrence_id,
@@ -143,12 +138,10 @@ drug_with_query <- function(concepts, variable_names,
     INNER JOIN @schema.concept c
       ON c.concept_id = t.drug_concept_id
     WHERE t.person_id IN (@person_ids)
-    AND {where_clause};
-
-    ANALYZE drg_filtered;
+    AND {where_clause} )
 
     -- Now summarise variables
-    CREATE TEMP TABLE drg AS
+    , drg AS (
     --- Note, this query will double count overlaps.
       --- If a person has two versions of a single drug, with overalapping start and end dates,
       --- the drug will be double counted.
@@ -186,11 +179,7 @@ drug_with_query <- function(concepts, variable_names,
       GROUP BY
       t.person_id
       ,t.icu_admission_datetime
-      ,gs.time_in_icu;
-
-      ANALYZE drg;
-
-      DROP table drg_filtered;")
+      ,gs.time_in_icu)")
   drug_with_query
 }
 end_join_query <- function(table_name, variable_names, prev_alias){
