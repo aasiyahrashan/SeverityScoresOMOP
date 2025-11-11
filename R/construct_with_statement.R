@@ -51,12 +51,14 @@ with_query <- function(concepts, table_name, variable_names,
       COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date,
       COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime
       FROM @schema.{variable_names$db_table_name} t
+    INNER JOIN
+    (SELECT distinct person_id from
+    icu_admission_details_multiple_visits) adm
+    ON t.person_id = adm.person_id
     -- For string searching by concept name if required
-    -- Slightly odd alias, but using it to match drug table
     INNER JOIN @schema.concept c
     ON c.concept_id = t.{variable_names$concept_id_var}
-      WHERE {where_clause}
-        AND person_id IN (@person_ids))
+      WHERE {where_clause})
 
     --- Filter by timestamp and create one row per time
     , {variable_names$alias} as (
@@ -135,10 +137,13 @@ drug_with_query <- function(concepts, variable_names,
     COALESCE({variable_names$end_datetime_var}::date, {variable_names$end_date_var}) AS table_end_date,
     COALESCE({variable_names$end_datetime_var}, {variable_names$end_date_var}::timestamp) AS table_end_datetime
     FROM @schema.drug_exposure t
+    INNER JOIN
+    (SELECT distinct person_id from
+    icu_admission_details_multiple_visits) adm
+    ON t.person_id = adm.person_id
     INNER JOIN @schema.concept c
       ON c.concept_id = t.drug_concept_id
-    WHERE t.person_id IN (@person_ids)
-    AND {where_clause} )
+    WHERE {where_clause} )
 
     -- Now summarise variables
     , drg AS (
