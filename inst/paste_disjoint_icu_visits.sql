@@ -12,7 +12,7 @@
 --   - new_end_datetime: the latest end datetime in the group
 --
 -- You can use these new values to consistently group related visit_detail records across clinical data tables.
-CREATE TEMP TABLE icu_admission_details_multiple_visits AS WITH
+WITH
 lagged_visit_details AS (
   SELECT
     vd.*,
@@ -63,11 +63,12 @@ pasted_visit_details AS (
       ORDER BY person_id, visit_occurrence_id, group_id
     ) AS new_visit_detail_id
   FROM grouped_visits
-)
+),
 
 --- This is called 'multiple_visits', because it joins to the pasted together visit detail table.
 --- Therefore, there can be more than one row per pasted visit detail.
-SELECT vd.person_id
+icu_admission_details_multiple_visits as
+(SELECT vd.person_id
 	,vd.visit_occurrence_id
 	,vd.visit_detail_id
 	,vd.new_visit_detail_id
@@ -88,9 +89,38 @@ AND (vo.visit_occurrence_id = vd.visit_occurrence_id
         AND  vd.visit_occurrence_id is null))
 WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= @start_date
 	AND COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) <= @end_date
-;
+)
 
-CREATE INDEX idx_icu_person_admit ON
-            icu_admission_details_multiple_visits (person_id,
-            icu_admission_datetime);
-ANALYZE icu_admission_details_multiple_visits;
+
+--- De-duplicating, but without the original visit detail IDs
+,icu_admission_details as
+   (SELECT
+  	d.person_id
+  	,p.person_source_value
+  	,@age_query
+  	,c.concept_name AS gender
+  	,d.visit_occurrence_id
+  	,d.new_visit_detail_id AS visit_detail_id
+    ,d.hospital_admission_datetime
+    ,d.hospital_discharge_datetime
+  	,d.icu_admission_datetime
+  	,d.icu_discharge_datetime
+  	,cs.care_site_id
+    ,cs.care_site_name
+    ,death.death_datetime
+  FROM (
+  	SELECT DISTINCT
+  		person_id,
+  		visit_occurrence_id,
+  		new_visit_detail_id,
+  		hospital_admission_datetime,
+  		hospital_discharge_datetime,
+  		icu_admission_datetime,
+  		icu_discharge_datetime
+  	FROM icu_admission_details_multiple_visits
+  ) d
+  INNER JOIN @schema.person p ON d.person_id = p.person_id
+  INNER JOIN @schema.concept c ON p.gender_concept_id = c.concept_id
+  LEFT JOIN @schema.care_site cs ON p.care_site_id = cs.care_site_id
+  LEFT JOIN @schema.death death ON p.person_id = death.person_id)
+
