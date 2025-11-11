@@ -162,8 +162,6 @@ get_score_variables <- function(conn, dialect, schema,
                                     sep = "\n")
   all_end_join_queries <- glue_collapse(end_join_queries$end_join_query,
                                         sep = "\n")
-  all_drop_table_statements <- glue_collapse(drop_table_statements$drop_table_query,
-                                        sep = "\n")
   # All required variables for the queries
   all_required_variables <- all_required_variables_query(concepts)
 
@@ -208,7 +206,6 @@ get_score_variables <- function(conn, dialect, schema,
       all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),
       all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
       all_icu_admission_datetime = all_id_vars(end_join_queries$alias, "icu_admission_datetime"),
-      all_drop_table_statements = all_drop_table_statements,
       all_required_variables = all_required_variables) %>%
     translate(tolower(dialect)) %>%
     # There is a bug in SQL render which means dates need to be rendered after translating
@@ -245,8 +242,11 @@ get_score_variables <- function(conn, dialect, schema,
     raw_sql_batch <- raw_sql %>%
       render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
 
+    # Timing
+    start_time <- Sys.time()
+
     # Getting the data
-    results[[i]] <- run_multiple_queries(conn, raw_sql_batch)
+    results[[i]] <- dbGetQuery(conn, raw_sql_batch)
 
     # Running GCS query
     if(nrow(gcs_concepts) > 0) {
@@ -256,8 +256,12 @@ get_score_variables <- function(conn, dialect, schema,
       gcs_raw_sql_batch <- gcs_raw_sql %>%
         render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
 
-      gcs_results[[i]] <- run_multiple_queries(conn, gcs_raw_sql_batch)
+      gcs_results[[i]] <- dbGetQuery(conn, gcs_raw_sql_batch)
     }
+
+    # Print times
+    end_time <- Sys.time()
+    message("Total execution time: ", round(difftime(end_time, start_time, units = "secs"), 2), " seconds")
   }
 
   data <- bind_rows(results)
