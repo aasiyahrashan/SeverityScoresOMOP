@@ -1,9 +1,70 @@
+#' Build the pasted_visits SQL string based on visit_mode.
+#'
+#' Encapsulates the logic for choosing and rendering the correct SQL file
+#' for ICU stay identification. Called internally by \code{get_score_variables}.
+#'
+#' @param visit_mode One of "paste", "raw", "ground_truth".
+#' @param dialect SQL dialect.
+#' @param paste_gap_hours Gap threshold for paste mode.
+#' @param ground_truth A \code{gt_config} object (ground_truth mode only).
+#'
+#' @return A character string containing the rendered SQL for the visit identification CTEs.
+#'
+#' @importFrom readr read_file
+#' @importFrom SqlRender render
+#' @importFrom glue glue
+build_visit_sql <- function(visit_mode, dialect,
+                            paste_gap_hours = 6,
+                            ground_truth = NULL) {
+
+  if (visit_mode == "ground_truth") {
+
+    # Hospital cols are optional — render as full SQL expression or NULL literal.
+    gt_hosp_adm_expr <- if (!is.null(ground_truth$gt_hospital_admission_col)) {
+      glue("gt.{ground_truth$gt_hospital_admission_col}")
+    } else {
+      "NULL"
+    }
+    gt_hosp_dis_expr <- if (!is.null(ground_truth$gt_hospital_discharge_col)) {
+      glue("gt.{ground_truth$gt_hospital_discharge_col}")
+    } else {
+      "NULL"
+    }
+
+    # Partially render the SQL. @ground_truth_values is left unrendered —
+    # it gets filled per batch in the main loop.
+    pasted_visits_sql <-
+      read_file(system.file("ground_truth_admission_details.sql",
+                            package = "SeverityScoresOMOP")) %>%
+      render(
+        gt_hospital_admission_expr = gt_hosp_adm_expr,
+        gt_hospital_discharge_expr = gt_hosp_dis_expr
+      )
+
+  } else if (visit_mode == "raw") {
+
+    pasted_visits_sql <-
+      read_file(system.file("raw_visit_details.sql",
+                            package = "SeverityScoresOMOP"))
+
+  } else {
+    # Default: "paste" mode (original behaviour)
+    pasted_visits_sql <-
+      read_file(system.file("paste_disjoint_icu_visits.sql",
+                            package = "SeverityScoresOMOP")) %>%
+      render(paste_gap_hours = paste_gap_hours)
+  }
+
+  pasted_visits_sql
+}
+
+
 #' Queries a database to get variables required for a specified severity score.
 #' Assumes visit detail table contains ICU admission information. If not
 #' available, uses visit_occurrence.
 #'
 #' @param conn A connection object to a database
-#' @param dialect dialect A dialect supported by SQLRender
+#' @param dialect A dialect supported by SQLRender
 #' @param schema The name of the schema you want to query.
 #' @param start_date
 #' The earliest ICU admission date/datetime. The filter is inclusive of the value specified. Needs to be in character format.
@@ -17,7 +78,7 @@
 #' @param last_window An integer >= 0
 #' Last timepoint (depending on cadence argument) since ICU admission
 #' to get physiology data for. The filter is inclusive of the value specified.
-#' @param mapping_path
+#' @param concepts_file_path
 #' Path to the custom *_concepts.tsv file containing score to OMOP mappings.
 #' Should match the example_concepts.tsv file format.
 #' @param severity_score
@@ -40,11 +101,33 @@
 #' If this option is chosen, cadence must be `24`.
 #' Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 hour windows from ICU admission time.
 #' @param batch_size Defaults to 10000, refers to number of ICU patients in whole dataset, since filtering on time is not possible.
+#' @param visit_mode How to determine ICU stays. One of:
+#' \describe{
+#'   \item{"paste"}{(Default) Stitches disjoint visit_detail rows together if the gap
+#'     between them is less than \code{paste_gap_hours}. This is the original behaviour.}
+#'   \item{"raw"}{Uses visit_detail rows as-is, without any stitching.
+#'     Use when visit_detail is already clean.}
+#'   \item{"ground_truth"}{Uses an external ground truth table to define ICU stays.
+#'     Requires a \code{gt_config} object via the \code{ground_truth} parameter.}
+#' }
+#' @param paste_gap_hours Numeric. Only used when \code{visit_mode = "paste"}.
+#' Maximum gap in hours between consecutive visit_detail rows before they are
+#' treated as separate ICU stays. Defaults to 6.
+#' @param ground_truth A \code{gt_config} object created by
+#' \code{\link{ground_truth_config}}. Only required when
+#' \code{visit_mode = "ground_truth"}. Bundles the ground truth dataframe,
+#' joining schema details, and column name mappings into a single object.
+#' @param run_validation Logical. Only used when \code{visit_mode = "ground_truth"}.
+#' If TRUE (default), runs a bidirectional check comparing ground truth patients
+#' against OMOP ICU patients. Set to FALSE to skip this check (e.g. to avoid a
+#' slow visit_detail scan on large databases).
 #'
 #' @returns A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
 #' The `time_in_icu` variable is the amount of time spent in ICU. The unit depends on cadence. If cadence is 24, the unit will be a day.
 #' If cadence is 1, the unit will be an hour, and so on.
-#' The columns returned will be named using the short_names specified in the `mapping_path` file
+#' The columns returned will be named using the short_names specified in the `mapping_path` file.
+#' In ground truth mode, the original ground truth columns (e.g. external IDs) are joined
+#' back onto the result for debugging and downstream joins.
 #'
 #' @import dplyr
 #' @importFrom DBI dbGetQuery dbDisconnect
@@ -62,15 +145,56 @@ get_score_variables <- function(conn, dialect, schema,
                                 age_method = "dob",
                                 cadence = 24,
                                 window_start_point = "calendar_date",
-                                batch_size = 10000) {
+                                batch_size = 10000,
+                                visit_mode = "paste",
+                                paste_gap_hours = 6,
+                                ground_truth = NULL,
+                                run_validation = TRUE) {
+
+  # --- Validate visit_mode argument ---
+  if (!visit_mode %in% c("paste", "raw", "ground_truth")) {
+    stop("visit_mode must be one of: 'paste', 'raw', 'ground_truth'")
+  }
+
+  # --- Validate paste_gap_hours ---
+  if (visit_mode == "paste" && (!is.numeric(paste_gap_hours) || paste_gap_hours <= 0)) {
+    stop("paste_gap_hours must be a positive number.")
+  }
+
+  # --- Validate ground truth parameters ---
+  if (visit_mode == "ground_truth") {
+    if (is.null(ground_truth) || !inherits(ground_truth, "gt_config")) {
+      stop("When visit_mode = 'ground_truth', a gt_config object must be ",
+           "passed via the 'ground_truth' parameter. ",
+           "Create one with ground_truth_config().")
+    }
+
+    # Validate the ground truth dataframe
+    validate_ground_truth(ground_truth)
+
+    if (run_validation) {
+      message("Validating ground truth against OMOP...")
+      validation_result <- validate_ground_truth_vs_omop(
+        conn = conn,
+        gt_config = ground_truth,
+        schema = schema,
+        start_date = start_date,
+        end_date = end_date,
+        dialect = dialect
+      )
+    }
+  }
+
   # Creating age query
   age_query <- age_query(age_method)
 
-  # Processing the ICU admission and discharge query.
-  # This pastes visit details together.
-  pasted_visits_sql <-
-    read_file(system.file("paste_disjoint_icu_visits.sql",
-                          package = "SeverityScoresOMOP"))
+  # --- Select the appropriate SQL for visit identification ---
+  pasted_visits_sql <- build_visit_sql(
+    visit_mode = visit_mode,
+    dialect = dialect,
+    paste_gap_hours = paste_gap_hours,
+    ground_truth = ground_truth
+  )
 
   # Getting list of all variable names
   variable_names <- read_delim(file = system.file("variable_names.csv",
@@ -117,7 +241,7 @@ get_score_variables <- function(conn, dialect, schema,
               omop_variable == "value_as_concept_id"))
   concepts <- concepts %>%
     filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-              omop_variable == "value_as_concept_id"))
+               omop_variable == "value_as_concept_id"))
 
   # Constructing with query for each table.
   with_queries_per_table <- concepts %>%
@@ -148,15 +272,6 @@ get_score_variables <- function(conn, dialect, schema,
                                            prev_alias)) %>%
     ungroup()
 
-  # Drop table statements
-  drop_table_statements <-
-    concepts %>%
-    distinct(table) %>%
-    # Need to get alias of the previous table for the timing join, if it exists.
-    left_join(variable_names %>% select(table, alias),
-              by = "table") %>%
-    mutate(drop_table_query = glue("DROP table {alias};"))
-
   # Combining each query type into a string
   all_with_queries <- glue_collapse(with_queries_per_table,
                                     sep = "\n")
@@ -166,7 +281,7 @@ get_score_variables <- function(conn, dialect, schema,
   all_required_variables <- all_required_variables_query(concepts)
 
   # Constructing the GCS query
-  if (nrow(gcs_concepts > 0)) {
+  if (nrow(gcs_concepts) > 0) {
     # The SQL file currently has the GCS LOINC concepts hardcoded.
     # I plan to construct it from here when I have time.
     gcs_raw_sql <-
@@ -184,6 +299,10 @@ get_score_variables <- function(conn, dialect, schema,
       # There is a bug in SQL render which means dates need to be rendered after translating
       render(start_date = single_quote(start_date),
              end_date = single_quote(end_date))
+
+    # Note: paste_gap_hours and hospital col params are already rendered into
+    # pasted_visits_sql. In ground truth mode, @ground_truth_values is left
+    # unrendered here — it gets filled per batch in the loop below.
 
     # Running the query
     cat("Printing GCS query \n")
@@ -212,20 +331,39 @@ get_score_variables <- function(conn, dialect, schema,
     render(start_date = single_quote(start_date),
            end_date = single_quote(end_date))
 
+  # Note: paste_gap_hours and hospital col params are already rendered into
+  # pasted_visits_sql. In ground truth mode, @ground_truth_values is left
+  # unrendered here — it gets filled per batch in the loop below.
+
   cat("Printing main query")
   cat(raw_sql)
 
-  # Batching person_ids
-  # -- ICU stay or critical care
-  # And the visit had to have started before the end date filter.
-  person_sql <- glue("
-  SELECT DISTINCT person_id
-  FROM {schema}.visit_detail
-  WHERE visit_detail_concept_id IN (581379, 32037)
-                     AND COALESCE(visit_detail_start_datetime,
-                     visit_detail_start_date) <= '{end_date}' \n")
+  # --- Get person_ids for batching ---
+  resolved_gt <- NULL  # Only populated in ground_truth mode
+  if (visit_mode == "ground_truth") {
+    # Resolve all ground truth rows to OMOP IDs up front.
+    # This returns a dataframe with person_id, visit_occurrence_id,
+    # icu_admission_datetime, icu_discharge_datetime.
+    resolved_gt <- resolve_ground_truth_ids(
+      conn = conn,
+      gt_config = ground_truth,
+      dialect = dialect
+    )
 
-  person_ids <- dbGetQuery(conn, person_sql)$person_id
+    person_ids <- unique(resolved_gt$person_id)
+
+  } else {
+    # Original batching: get person_ids from visit_detail
+    person_sql <- glue("
+    SELECT DISTINCT person_id
+    FROM {schema}.visit_detail
+    WHERE visit_detail_concept_id IN (581379, 32037)
+                       AND COALESCE(visit_detail_start_datetime,
+                       visit_detail_start_date) <= '{end_date}' \n")
+
+    person_ids <- dbGetQuery(conn, person_sql)$person_id
+  }
+
   id_batches <- split(person_ids, ceiling(seq_along(person_ids)/batch_size))
 
 
@@ -239,8 +377,16 @@ get_score_variables <- function(conn, dialect, schema,
     # Print batch number
     print(glue("Main query - Running batch {i} of {length(id_batches)}"))
 
-    raw_sql_batch <- raw_sql %>%
-      render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+    # In ground truth mode, render the VALUES clause for this batch.
+    # In paste/raw modes, render person_ids as before.
+    if (visit_mode == "ground_truth") {
+      gt_values <- build_ground_truth_values_clause(resolved_gt, person_ids_batch, dialect)
+      raw_sql_batch <- raw_sql %>%
+        render(ground_truth_values = gt_values)
+    } else {
+      raw_sql_batch <- raw_sql %>%
+        render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+    }
 
     # Timing
     start_time <- Sys.time()
@@ -253,8 +399,13 @@ get_score_variables <- function(conn, dialect, schema,
       # Print batch number
       print(glue("GCS query - Running batch {i} of {length(id_batches)}"))
 
-      gcs_raw_sql_batch <- gcs_raw_sql %>%
-        render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+      if (visit_mode == "ground_truth") {
+        gcs_raw_sql_batch <- gcs_raw_sql %>%
+          render(ground_truth_values = gt_values)
+      } else {
+        gcs_raw_sql_batch <- gcs_raw_sql %>%
+          render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
+      }
 
       gcs_results[[i]] <- dbGetQuery(conn, gcs_raw_sql_batch)
     }
@@ -268,12 +419,33 @@ get_score_variables <- function(conn, dialect, schema,
   gcs_data <- bind_rows(gcs_results)
 
   ### Don't like joining here, but not much choice.
-  if (nrow(gcs_concepts > 0)) {
+  if (nrow(gcs_concepts) > 0) {
     data <- left_join(data,
                       gcs_data,
                       by = c("person_id",
                              "icu_admission_datetime",
                              "time_in_icu"))
+  }
+
+  # In ground truth mode, join the original ground truth columns back onto the
+  # result so that external IDs (e.g. IcuStayRegistryKey) are available for
+  # debugging and downstream joins. The join uses person_id + icu_admission_datetime
+  # which should be unique per ICU stay in the ground truth.
+  if (visit_mode == "ground_truth" && !is.null(resolved_gt)) {
+    # Select only the original ground truth columns (drop the standardised ones
+    # that are already in the OMOP result to avoid duplicates).
+    gt_cols_to_join <- resolved_gt[,
+                                   !(colnames(resolved_gt) %in% c("visit_occurrence_id",
+                                                                  "icu_discharge_datetime")),
+                                   drop = FALSE]
+    # Deduplicate in case multiple ground truth rows mapped to the same
+    # person_id + icu_admission_datetime (shouldn't happen, but be safe).
+    gt_cols_to_join <- gt_cols_to_join[
+      !duplicated(gt_cols_to_join[, c("person_id", "icu_admission_datetime")]), ]
+
+    data <- left_join(data,
+                      gt_cols_to_join,
+                      by = c("person_id", "icu_admission_datetime"))
   }
 
   as_tibble(data)

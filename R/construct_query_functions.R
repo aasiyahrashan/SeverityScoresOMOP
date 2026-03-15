@@ -57,11 +57,11 @@ window_query <- function(window_start_point, time_variable,
     # Returns one row per day based on calendar date rather than admission time.
     glue(" DATEDIFF(dd, adm.icu_admission_datetime, {date_variable})"),
     # Uses admission date as starting point, returns rows based on cadence argument.
-    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, {time_variable} / ({cadence} * 60))"))
+    glue(" FLOOR(DATEDIFF(MINUTE, adm.icu_admission_datetime, {time_variable}) / ({cadence} * 60))"))
 }
 
 # Builds the age query
-age_query <- function(age_method, dialect) {
+age_query <- function(age_method) {
 
   if (!(age_method %in% c("dob", "year_only"))) {
     stop("Error: age_method must be either 'dob' or 'year_only'")
@@ -78,8 +78,8 @@ age_query <- function(age_method, dialect) {
 # Builds the 'WHERE' query to make sure we only filter by required variables SQL
 # function is only called for patients and timepoints with the drugs of interest.
 where_clause <- function(concepts,
-                                     variable_names,
-                                     table_name) {
+                         variable_names,
+                         table_name) {
 
   # Finding variables which need string matches
   concepts <- concepts %>%
@@ -111,9 +111,9 @@ where_clause <- function(concepts,
     distinct(omop_variable, concept_id) %>%
     reframe(
       concept_id =
-        glue("LOWER({omop_variable}) LIKE '% ",
+        glue("LOWER({omop_variable}) LIKE '%",
              glue_collapse(tolower(concept_id),
-                                 sep = "%' OR LOWER({omop_variable}) LIKE '%"),
+                           sep = "%' OR LOWER({omop_variable}) LIKE '%"),
              "%'")) %>%
     pull(concept_id)
 
@@ -139,7 +139,7 @@ where_clause <- function(concepts,
   # Combine with OR, or use 'false' if none are present
   # If no concepts, I want no row returned. So I make the condition say 'where false'.
   combined_expression <- if (length(expressions) > 0) {
-   paste0("(", paste(expressions, collapse = " OR "), ")")
+    paste0("(", paste(expressions, collapse = " OR "), ")")
   } else {
     "false"
   }
@@ -148,8 +148,8 @@ where_clause <- function(concepts,
 
 # Builds the CASE WHEN 'variable required' query for each table
 variables_query <- function(concepts,
-                             concept_id_var,
-                             table_id_var = ""){
+                            concept_id_var,
+                            table_id_var = ""){
 
   variables_required = ""
 
@@ -157,10 +157,6 @@ variables_query <- function(concepts,
   numeric_concepts <-
     concepts %>%
     filter(omop_variable == "value_as_number") %>%
-    #### GCS can sometimes be stored as a concept ID instead
-    #### of a number. These need a separate query.
-    filter(!(short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
-               omop_variable == "value_as_concept_id")) %>%
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
@@ -202,7 +198,7 @@ variables_query <- function(concepts,
   non_numeric_concepts <-
     concepts %>%
     filter((omop_variable == "value_as_concept_id" |
-                is.na(omop_variable))) %>%
+              is.na(omop_variable))) %>%
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
@@ -247,7 +243,7 @@ variables_query <- function(concepts,
       # IDs in cases where we're selecting specific values
       # The query returns the number of rows matching the concept IDs provided.
       concept_id = glue_collapse(tolower(unique(concept_id)),
-                                      sep = glue("%' OR LOWER(t.{omop_variable}) LIKE '%")),
+                                 sep = glue("%' OR LOWER(t.{omop_variable}) LIKE '%")),
       additional_filter_value = glue(
         "'",
         glue_collapse(additional_filter_value, sep = "', '"),
@@ -285,11 +281,11 @@ variables_query <- function(concepts,
     ) %>%
     mutate(
       additional_filter_query =
-          if_else(!is.na(additional_filter_variable_name),
-                  glue("AND {additional_filter_variable_name}
+        if_else(!is.na(additional_filter_variable_name),
+                glue("AND {additional_filter_variable_name}
               IN ({additional_filter_value})"), "", ""),
-        count_query = glue(
-      ", COUNT ( CASE WHEN {concept_id_var} in (SELECT descendant_concept_id FROM
+      count_query = glue(
+        ", COUNT ( CASE WHEN {concept_id_var} in (SELECT descendant_concept_id FROM
             @schema.concept_ancestor WHERE
             ancestor_concept_id IN ({concept_id}))
             {additional_filter_query}
@@ -316,7 +312,7 @@ translate_drug_join <- function(dialect){
 
   if (dialect == "postgresql"){
     drug_join <- glue(
-    "LEFT JOIN LATERAL
+      "LEFT JOIN LATERAL
       --- For each row in the table, creating
       generate_series(
        t.drug_start
@@ -328,7 +324,7 @@ translate_drug_join <- function(dialect){
 
   if (dialect == "sql server"){
     drug_join <- glue(
-    "OUTER APPLY
+      "OUTER APPLY
       --- For each row in the table, creating
       generate_series(
       t.drug_start

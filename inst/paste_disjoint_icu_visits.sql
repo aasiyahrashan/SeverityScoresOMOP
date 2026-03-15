@@ -4,7 +4,8 @@
 -- This query "stitches" those visits back together when:
 ---  - the visit_detail_concept_id is 581379 or 32037, representing an ICU stay
 --   - they belong to the same person,
---   - the gap between the visits is less than 6 hours (to allow time for moves, visits to scanners, etc)
+--   - the gap between the visits is less than @paste_gap_hours hours
+--     (to allow time for moves, visits to scanners, etc)
 --
 -- The output adds the following columns:
 --   - new_visit_detail_id: a unique ID for each stitched-together group of contiguous visits
@@ -30,7 +31,7 @@ lagged_visit_details AS (
 grouped_visits AS (
   SELECT *,
     SUM(CASE
-          WHEN DATEDIFF(MINUTE, prev_end, visit_detail_start_datetime) < 60*6 THEN 0
+          WHEN DATEDIFF(MINUTE, prev_end, visit_detail_start_datetime) < 60*@paste_gap_hours THEN 0
           ELSE 1
         END) OVER (
           PARTITION BY person_id, visit_occurrence_id, visit_detail_concept_id
@@ -123,4 +124,3 @@ WHERE COALESCE(vd.visit_detail_start_datetime, vd.visit_detail_start_date) >= @s
   INNER JOIN @schema.concept c ON p.gender_concept_id = c.concept_id
   LEFT JOIN @schema.care_site cs ON p.care_site_id = cs.care_site_id
   LEFT JOIN @schema.death death ON p.person_id = death.person_id)
-
