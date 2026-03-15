@@ -95,6 +95,22 @@ comorbidities <- function(data) {
 fix_apache_ii_units <- function(data) {
   data <- as.data.table(data)
 
+  # Check that required columns exist before attempting unit conversion.
+  # Each variable needs min_, max_, and unit_ columns.
+  required <- c(
+    "min_temp", "max_temp", "unit_temp",
+    "min_wcc", "max_wcc", "unit_wcc",
+    "min_fio2", "max_fio2",
+    "min_pao2", "max_pao2", "unit_pao2",
+    "min_paco2", "max_paco2", "unit_paco2",
+    "min_hematocrit", "max_hematocrit",
+    "min_sodium", "max_sodium", "unit_sodium",
+    "min_potassium", "max_potassium", "unit_potassium",
+    "min_creatinine", "max_creatinine", "unit_creatinine",
+    "min_bicarbonate", "max_bicarbonate"
+  )
+  check_required_columns(data, required, "fix_apache_ii_units")
+
   #### Default unit for temperature is celsius.
   #### It's more accurate to divide based on values instead of what the unit says.
   data[max_temp > 50, max_temp := (max_temp - 32) * 5 / 9]
@@ -241,6 +257,24 @@ fix_apache_ii_units <- function(data) {
 #' @import data.table
 #' @export
 fix_implausible_values_apache_ii <- function(data) {
+  # Check required columns. Unit columns are needed because implausible value
+  # thresholds depend on the unit.
+  required <- c(
+    "min_temp", "max_temp", "unit_temp",
+    "min_wcc", "max_wcc", "unit_wcc",
+    "min_fio2", "max_fio2", "unit_fio2",
+    "min_pao2", "max_pao2", "unit_pao2",
+    "min_paco2", "max_paco2", "unit_paco2",
+    "min_hematocrit", "max_hematocrit", "unit_hematocrit",
+    "min_sodium", "max_sodium", "unit_sodium",
+    "min_potassium", "max_potassium", "unit_potassium",
+    "min_creatinine", "max_creatinine", "unit_creatinine",
+    "min_bicarbonate", "max_bicarbonate", "unit_bicarbonate",
+    "min_rr", "max_rr", "min_hr", "max_hr",
+    "min_ph", "max_ph"
+  )
+  check_required_columns(data, required, "fix_implausible_values_apache_ii")
+
   ### Temperature.
   data[(max_temp < 25 | max_temp > 49.9) & unit_temp == "degree Celsius", max_temp := NA]
 
@@ -403,12 +437,8 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
     "max_creatinine", "age"
   )
 
-  # Display a warning if fields are missing
-  if (all(!apache %in% names(data))) {
-    warning("Some of the variables required for the APACHE II calculation are missing.
-            Please make sure get_score_variables function has been run, and the concepts
-            file includes all variables.")
-  }
+  # Check that required columns exist.
+  check_required_columns(data, apache, "calculate_apache_ii_score")
 
   ##### THE ORDER OF CONDITIONS IS IMPORTANT FOR ALL THE BLOCKS BELOW.
 

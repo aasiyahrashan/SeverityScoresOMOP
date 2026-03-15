@@ -1,3 +1,26 @@
+#' Check that required columns exist in a dataframe.
+#'
+#' Stops with a clear error listing missing columns and suggesting a fix.
+#' Used internally by scoring and unit-fixing functions.
+#'
+#' @param data A dataframe to check.
+#' @param required_cols Character vector of column names that must be present.
+#' @param fn_name Name of the calling function, used in the error message.
+#'
+#' @return NULL, invisibly. Called for its side effect (stopping on error).
+check_required_columns <- function(data, required_cols, fn_name) {
+  missing <- setdiff(required_cols, names(data))
+  if (length(missing) > 0) {
+    stop(fn_name, ": missing required column(s): ",
+         paste(missing, collapse = ", "),
+         ". Check that get_score_variables has been run and the concepts ",
+         "file includes all required variables.",
+         call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+
 #' Calculates mean arterial pressure if not already calculated.
 #'
 #' @param data

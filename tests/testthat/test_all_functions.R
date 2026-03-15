@@ -685,3 +685,66 @@ test_that("build_visit_sql renders hospital cols as NULL when not provided", {
   # Should have COALESCE(NULL, ...) for hospital times
   expect_true(grepl("COALESCE\\(NULL", result))
 })
+
+
+# =============================================================================
+# check_required_columns
+# =============================================================================
+test_that("check_required_columns passes when all columns present", {
+  df <- data.frame(a = 1, b = 2, c = 3)
+  expect_silent(check_required_columns(df, c("a", "b"), "test_fn"))
+})
+
+test_that("check_required_columns stops on missing columns", {
+  df <- data.frame(a = 1, b = 2)
+  expect_error(
+    check_required_columns(df, c("a", "c", "d"), "test_fn"),
+    "test_fn: missing required column.*c.*d"
+  )
+})
+
+test_that("check_required_columns error message names the calling function", {
+  df <- data.frame(a = 1)
+  expect_error(
+    check_required_columns(df, c("b"), "fix_apache_ii_units"),
+    "fix_apache_ii_units"
+  )
+})
+
+
+# =============================================================================
+# Scoring functions: column existence checks
+# =============================================================================
+test_that("fix_apache_ii_units stops on missing columns", {
+  data <- data.table(min_temp = 37, max_temp = 38)
+  expect_error(fix_apache_ii_units(data), "fix_apache_ii_units: missing required column")
+})
+
+test_that("fix_implausible_values_apache_ii stops on missing columns", {
+  data <- data.table(min_temp = 37)
+  expect_error(fix_implausible_values_apache_ii(data),
+               "fix_implausible_values_apache_ii: missing required column")
+})
+
+test_that("calculate_apache_ii_score stops on missing columns", {
+  data <- data.table(min_temp = 37)
+  expect_error(calculate_apache_ii_score(data),
+               "calculate_apache_ii_score: missing required column")
+})
+
+test_that("fix_sofa_units stops on missing columns", {
+  data <- data.table(min_fio2 = 0.5)
+  expect_error(fix_sofa_units(data), "fix_sofa_units: missing required column")
+})
+
+test_that("fix_implausible_values_sofa stops on missing columns", {
+  data <- data.table(min_platelet = 100)
+  expect_error(fix_implausible_values_sofa(data),
+               "fix_implausible_values_sofa: missing required column")
+})
+
+test_that("calculate_sofa_score stops on missing columns", {
+  data <- data.table(min_platelet = 100)
+  expect_error(calculate_sofa_score(data),
+               "calculate_sofa_score: missing required column")
+})
