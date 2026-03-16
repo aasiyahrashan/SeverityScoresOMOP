@@ -428,6 +428,10 @@ test_that("translate_drug_join returns OUTER APPLY for sql server", {
   expect_true(grepl("OUTER APPLY", result))
 })
 
+test_that("translate_drug_join stops on unsupported dialect", {
+  expect_error(translate_drug_join("sqlite"), "Unsupported dialect")
+})
+
 
 # =============================================================================
 # units_of_measure_query
@@ -480,16 +484,34 @@ test_that("all_required_variables_query lists count vars correctly", {
 
 
 # =============================================================================
-# all_id_vars
+# spine_query / spine_join_query
 # =============================================================================
-test_that("all_id_vars produces correct coalesce string", {
-  result <- all_id_vars(c("m", "o"), "person_id")
-  expect_equal(result, "m.person_id, o.person_id")
+test_that("spine_query builds UNION from multiple aliases", {
+  result <- spine_query(c("m", "o", "co"))
+  expect_true(grepl("UNION", result))
+  expect_true(grepl("FROM m", result))
+  expect_true(grepl("FROM o", result))
+  expect_true(grepl("FROM co", result))
+  expect_true(grepl("spine AS", result))
 })
 
-test_that("all_id_vars works with single alias", {
-  result <- all_id_vars("m", "time_in_icu")
-  expect_equal(result, "m.time_in_icu")
+test_that("spine_query works with single alias", {
+  result <- spine_query("m")
+  expect_true(grepl("spine AS", result))
+  expect_true(grepl("FROM m", result))
+  expect_false(grepl("UNION", result))
+})
+
+test_that("spine_join_query builds LEFT JOINs on plain columns", {
+  result <- spine_join_query(c("m", "o"))
+  expect_true(grepl("FROM spine", result))
+  expect_true(grepl("LEFT JOIN m", result))
+  expect_true(grepl("LEFT JOIN o", result))
+  # Should NOT have COALESCE in join conditions
+  expect_false(grepl("COALESCE", result))
+  # Should join on plain columns
+  expect_true(grepl("spine.person_id = m.person_id", result))
+  expect_true(grepl("spine.time_in_icu = o.time_in_icu", result))
 })
 
 

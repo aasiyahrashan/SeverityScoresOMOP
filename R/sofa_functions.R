@@ -231,7 +231,7 @@ fix_implausible_values_sofa <- function(data) {
 #' @return A data frame with a variable containing the apache II score calculated.
 #' @import data.table
 #' @export
-calculate_sofa_score <- function(data, imputation = "normal") {
+calculate_sofa_score_legacy <- function(data, imputation = "normal") {
   data <- as.data.table(data)
 
   # Define the fields requested for full computation

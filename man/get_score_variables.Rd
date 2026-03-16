@@ -19,13 +19,19 @@ get_score_variables(
   age_method = "dob",
   cadence = 24,
   window_start_point = "calendar_date",
-  batch_size = 10000
+  batch_size = 10000,
+  visit_mode = "paste",
+  paste_gap_hours = 6,
+  ground_truth = NULL,
+  run_validation = TRUE,
+  verbose = FALSE,
+  dry_run = FALSE
 )
 }
 \arguments{
 \item{conn}{A connection object to a database}
 
-\item{dialect}{dialect A dialect supported by SQLRender}
+\item{dialect}{A dialect supported by SQLRender}
 
 \item{schema}{The name of the schema you want to query.}
 
@@ -42,6 +48,9 @@ The filter is inclusive of the value specified.}
 \item{last_window}{An integer >= 0
 Last timepoint (depending on cadence argument) since ICU admission
 to get physiology data for. The filter is inclusive of the value specified.}
+
+\item{concepts_file_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
+Should match the example_concepts.tsv file format.}
 
 \item{severity_score}{A vector including the names of the severity scores to calculate.
 Currently supports "APACHE II" and "SOFA".
@@ -66,14 +75,47 @@ Option 2 (should be used for CC-HIC or EHR data) divides observations into 24 ho
 
 \item{batch_size}{Defaults to 10000, refers to number of ICU patients in whole dataset, since filtering on time is not possible.}
 
-\item{mapping_path}{Path to the custom *_concepts.tsv file containing score to OMOP mappings.
-Should match the example_concepts.tsv file format.}
+\item{visit_mode}{How to determine ICU stays. One of:
+\describe{
+  \item{"paste"}{(Default) Stitches disjoint visit_detail rows together if the gap
+    between them is less than \code{paste_gap_hours}. This is the original behaviour.}
+  \item{"raw"}{Uses visit_detail rows as-is, without any stitching.
+    Use when visit_detail is already clean.}
+  \item{"ground_truth"}{Uses an external ground truth table to define ICU stays.
+    Requires a \code{gt_config} object via the \code{ground_truth} parameter.}
+}}
+
+\item{paste_gap_hours}{Numeric. Only used when \code{visit_mode = "paste"}.
+Maximum gap in hours between consecutive visit_detail rows before they are
+treated as separate ICU stays. Defaults to 6.}
+
+\item{ground_truth}{A \code{gt_config} object created by
+\code{\link{ground_truth_config}}. Only required when
+\code{visit_mode = "ground_truth"}. Bundles the ground truth dataframe,
+joining schema details, and column name mappings into a single object.}
+
+\item{run_validation}{Logical. Only used when \code{visit_mode = "ground_truth"}.
+If TRUE (default), runs a bidirectional check comparing ground truth patients
+against OMOP ICU patients. Set to FALSE to skip this check (e.g. to avoid a
+slow visit_detail scan on large databases).}
+
+\item{verbose}{Logical. If TRUE, prints the rendered SQL queries to the
+console via \code{message()}. Defaults to FALSE.}
+
+\item{dry_run}{Logical. If TRUE, builds and returns the fully rendered SQL
+queries without executing them or connecting to the database (beyond
+ground truth ID resolution if in ground_truth mode). Returns a named list
+with elements \code{main_sql}, \code{gcs_sql} (or NULL), and
+\code{person_ids_sql} (the query used to find patient IDs, or NULL in
+ground truth mode). Useful for debugging and testing.}
 }
 \value{
-A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
+If \code{dry_run = FALSE} (default): A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
 The `time_in_icu` variable is the amount of time spent in ICU. The unit depends on cadence. If cadence is 24, the unit will be a day.
 If cadence is 1, the unit will be an hour, and so on.
-The columns returned will be named using the short_names specified in the `mapping_path` file
+The columns returned will be named using the short_names specified in the `mapping_path` file.
+In ground truth mode, the original ground truth columns (e.g. external IDs) are joined
+back onto the result for debugging and downstream joins.
 }
 \description{
 Queries a database to get variables required for a specified severity score.

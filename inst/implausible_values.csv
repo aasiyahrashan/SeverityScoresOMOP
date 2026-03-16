@@ -1,0 +1,19 @@
+variable,expected_unit,min_plausible,max_plausible
+temp,degree Celsius,25,49.9
+wcc,billion per liter,0,9999
+fio2,ratio,0.21,1
+pao2,millimeter mercury column,20,400
+paco2,millimeter mercury column,0,376
+hematocrit,percent,0,100
+sodium,millimole per liter,40,260
+potassium,millimole per liter,1,9.9
+creatinine,milligram per deciliter,0.1,39
+bicarbonate,millimole per liter,1,59
+bilirubin,milligram per deciliter,0,100
+platelet,billion per liter,0,9999
+rr,,2,79
+hr,,10,299
+ph,,6.1,9
+sbp,,20,299
+dbp,,0,200
+map,,6,233
