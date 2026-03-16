@@ -15,10 +15,10 @@ get_physiology_variable_availability <- function(data) {
     select(starts_with(c("max_", "apache_ii_score", "sofa_score"))) %>%
     rename_all(~str_replace(., "^max_", "")) %>%
     rename_all(~str_replace(., "^apache_ii_score_no_imputation",
-                                      "APACHE-II-no-imputation")) %>%
+                            "APACHE-II-no-imputation")) %>%
     rename_all(~str_replace(., "^apache_ii_score", "APACHE-II")) %>%
     rename_all(~str_replace(., "^sofa_score_no_imputation",
-                                      "SOFA-no-imputation")) %>%
+                            "SOFA-no-imputation")) %>%
     rename_all(~str_replace(., "^sofa_score", "SOFA")) %>%
     summarise_all(list(
       availability = ~ paste0(
@@ -29,7 +29,7 @@ get_physiology_variable_availability <- function(data) {
     pivot_longer(
       cols = names(.),
       names_to = c("variable", "summary"),
-      names_sep = "_",
+      names_pattern = "^(.+)_(availability|min|max)$",
       values_transform = as.character
     ) %>%
     pivot_wider(names_from = "summary", values_from = "value") %>%

@@ -160,15 +160,13 @@ variables_query <- function(concepts,
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
-      # This is slightly odd, but just makes sure we don't duplicate concept
-      # IDs in cases where we're selecting specific values
-      # The query returns the number of rows matching the concept IDs provided.
       concept_id = glue_collapse(unique(concept_id), sep = ", "),
-      additional_filter_value = glue(
-        "'",
-        glue_collapse(additional_filter_value, sep = "', '"),
-        "'"
-      )
+      additional_filter_value = {
+        vals <- additional_filter_value[!is.na(additional_filter_value)]
+        if (length(vals) == 0) NA_character_
+        else glue("'", glue_collapse(vals, sep = "', '"), "'")
+      },
+      .groups = "drop"
     ) %>%
     mutate(
       additional_filter_query =
@@ -202,16 +200,14 @@ variables_query <- function(concepts,
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
-      # This is slightly odd, but just makes sure we don't duplicate concept
-      # IDs in cases where we're selecting specific values
-      # The query returns the number of rows matching the concept IDs provided.
       concept_id = glue_collapse(unique(concept_id), sep = ", "),
       concept_id_value = glue_collapse(concept_id_value, sep = ", "),
-      additional_filter_value = glue(
-        "'",
-        glue_collapse(additional_filter_value, sep = "', '"),
-        "'"
-      )
+      additional_filter_value = {
+        vals <- additional_filter_value[!is.na(additional_filter_value)]
+        if (length(vals) == 0) NA_character_
+        else glue("'", glue_collapse(vals, sep = "', '"), "'")
+      },
+      .groups = "drop"
     ) %>%
     # Building the query in separate elements, depending on which conditions are filled
     mutate(
@@ -239,16 +235,14 @@ variables_query <- function(concepts,
     # It's possible for multiple strings to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
-      # This is slightly odd, but just makes sure we don't duplicate concept
-      # IDs in cases where we're selecting specific values
-      # The query returns the number of rows matching the concept IDs provided.
       concept_id = glue_collapse(tolower(unique(concept_id)),
                                  sep = glue("%' OR LOWER(t.{omop_variable}) LIKE '%")),
-      additional_filter_value = glue(
-        "'",
-        glue_collapse(additional_filter_value, sep = "', '"),
-        "'"
-      )
+      additional_filter_value = {
+        vals <- additional_filter_value[!is.na(additional_filter_value)]
+        if (length(vals) == 0) NA_character_
+        else glue("'", glue_collapse(vals, sep = "', '"), "'")
+      },
+      .groups = "drop"
     ) %>%
     # Building the query in separate elements, depending on which conditions are filled
     mutate(
@@ -269,15 +263,13 @@ variables_query <- function(concepts,
     # It's possible for multiple concept IDs to represent the same variable, so grouping here.
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
     summarise(
-      # This is slightly odd, but just makes sure we don't duplicate concept
-      # IDs in cases where we're selecting specific values
-      # The query returns the number of rows matching the concept IDs provided.
       concept_id = glue_collapse(unique(concept_id), sep = ", "),
-      additional_filter_value = glue(
-        "'",
-        glue_collapse(additional_filter_value, sep = "', '"),
-        "'"
-      )
+      additional_filter_value = {
+        vals <- additional_filter_value[!is.na(additional_filter_value)]
+        if (length(vals) == 0) NA_character_
+        else glue("'", glue_collapse(vals, sep = "', '"), "'")
+      },
+      .groups = "drop"
     ) %>%
     mutate(
       additional_filter_query =
@@ -320,9 +312,7 @@ translate_drug_join <- function(dialect){
       --- The 'on true' condition just means that every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS gs(time_in_icu) ON TRUE")
-  }
-
-  if (dialect == "sql server"){
+  } else if (dialect == "sql server"){
     drug_join <- glue(
       "OUTER APPLY
       --- For each row in the table, creating
@@ -332,7 +322,9 @@ translate_drug_join <- function(dialect){
       --- Every row in the drug table gets joined to
       --- the corresponding time_in_icu rows created by generate_series.
       ) AS time_in_icu")
-
+  } else {
+    stop("Unsupported dialect for drug join: '", dialect,
+         "'. This should have been caught by get_score_variables().")
   }
   drug_join
 }

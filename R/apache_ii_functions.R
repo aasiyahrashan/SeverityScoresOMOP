@@ -462,7 +462,7 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
     data[, (subscore_variables) := as.integer(NA)]
     total_variable <- "apache_ii_score_no_imputation"
   } else {
-    warning("The imputation type should either be 'normal' or 'none'")
+    stop("The imputation type must be either 'normal' or 'none', not '", imputation, "'")
   }
 
   #### Temperature. Need to calculate for both min and max to work out which is worse.
@@ -575,16 +575,16 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
   data[is.na(min_ph) & (min_bicarbonate >= 32 & min_bicarbonate < 41), min_bicarbonate_ap_ii := 1]
   data[is.na(min_ph) & (min_bicarbonate >= 18 & min_bicarbonate < 22), min_bicarbonate_ap_ii := 2]
   data[is.na(min_ph) &
-         (min_bicarbonate >= 15 & min_bicarbonate >= 18) |
-         (min_bicarbonate >= 41 & min_bicarbonate >= 52), min_bicarbonate_ap_ii := 3]
+         ((min_bicarbonate >= 15 & min_bicarbonate < 18) |
+            (min_bicarbonate >= 41 & min_bicarbonate < 52)), min_bicarbonate_ap_ii := 3]
   data[is.na(min_ph) & (min_bicarbonate < 15 | min_bicarbonate >= 52), min_bicarbonate_ap_ii := 4]
 
   data[is.na(max_ph) & (max_bicarbonate >= 22 & max_bicarbonate < 32), max_bicarbonate_ap_ii := 0]
   data[is.na(max_ph) & (max_bicarbonate >= 32 & max_bicarbonate < 41), max_bicarbonate_ap_ii := 1]
   data[is.na(max_ph) & (max_bicarbonate >= 18 & max_bicarbonate < 22), max_bicarbonate_ap_ii := 2]
   data[is.na(max_ph) &
-         (max_bicarbonate >= 15 & max_bicarbonate >= 18) |
-         (max_bicarbonate >= 41 & max_bicarbonate >= 52), max_bicarbonate_ap_ii := 3]
+         ((max_bicarbonate >= 15 & max_bicarbonate < 18) |
+            (max_bicarbonate >= 41 & max_bicarbonate < 52)), max_bicarbonate_ap_ii := 3]
   data[is.na(max_ph) & (max_bicarbonate < 15 | max_bicarbonate >= 52), max_bicarbonate_ap_ii := 4]
 
   ##### sodium

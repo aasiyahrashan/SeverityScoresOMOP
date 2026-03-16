@@ -1,5 +1,5 @@
 with_query <- function(concepts, table_name, variable_names,
-                           window_start_point, cadence){
+                       window_start_point, cadence){
   # Constructs subqueries for every table except the drug one.
 
   # Variable names, and return empty string if no concepts required
@@ -34,7 +34,7 @@ with_query <- function(concepts, table_name, variable_names,
                                variable_names$id_var)
 
   # Where query
-  where_clause = where_clause(concepts, variable_names, table_name)
+  where_expression <- where_clause(concepts, variable_names, table_name)
 
   # Units of measure join.
   units_of_measure_query <- units_of_measure_query(table_name)
@@ -48,8 +48,8 @@ with_query <- function(concepts, table_name, variable_names,
       t.*,
       c.concept_name,
       c.concept_code,
-      COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date,
-      COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime
+      COALESCE(CAST({variable_names$start_datetime_var} AS DATE), {variable_names$start_date_var}) AS table_date,
+      COALESCE({variable_names$start_datetime_var}, CAST({variable_names$start_date_var} AS TIMESTAMP)) AS table_datetime
       FROM @schema.{variable_names$db_table_name} t
     INNER JOIN
     (SELECT distinct person_id from
@@ -58,7 +58,7 @@ with_query <- function(concepts, table_name, variable_names,
     -- For string searching by concept name if required
     INNER JOIN @schema.concept c
     ON c.concept_id = t.{variable_names$concept_id_var}
-      WHERE {where_clause})
+      WHERE {where_expression})
 
     --- Filter by timestamp and create one row per time
     , {variable_names$alias} as (
@@ -118,7 +118,7 @@ drug_with_query <- function(concepts, variable_names,
   variables <- variables_query(concepts,
                                variable_names$concept_id_var,
                                variable_names$id_var)
-  where_clause <- where_clause(concepts, variable_names, "Drug")
+  where_expression <- where_clause(concepts, variable_names, "Drug")
   drug_join <- translate_drug_join(dialect)
 
   drug_with_query <-
@@ -132,10 +132,10 @@ drug_with_query <- function(concepts, variable_names,
     t.drug_concept_id,
     c.concept_name,
     c.concept_code,
-    COALESCE({variable_names$start_datetime_var}::date, {variable_names$start_date_var}) AS table_date,
-    COALESCE({variable_names$start_datetime_var}, {variable_names$start_date_var}::timestamp) AS table_datetime,
-    COALESCE({variable_names$end_datetime_var}::date, {variable_names$end_date_var}) AS table_end_date,
-    COALESCE({variable_names$end_datetime_var}, {variable_names$end_date_var}::timestamp) AS table_end_datetime
+    COALESCE(CAST({variable_names$start_datetime_var} AS DATE), {variable_names$start_date_var}) AS table_date,
+    COALESCE({variable_names$start_datetime_var}, CAST({variable_names$start_date_var} AS TIMESTAMP)) AS table_datetime,
+    COALESCE(CAST({variable_names$end_datetime_var} AS DATE), {variable_names$end_date_var}) AS table_end_date,
+    COALESCE({variable_names$end_datetime_var}, CAST({variable_names$end_date_var} AS TIMESTAMP)) AS table_end_datetime
     FROM @schema.drug_exposure t
     INNER JOIN
     (SELECT distinct person_id from
@@ -143,7 +143,7 @@ drug_with_query <- function(concepts, variable_names,
     ON t.person_id = adm.person_id
     INNER JOIN @schema.concept c
       ON c.concept_id = t.drug_concept_id
-    WHERE {where_clause} )
+    WHERE {where_expression} )
 
     -- Now summarise variables
     , drg AS (

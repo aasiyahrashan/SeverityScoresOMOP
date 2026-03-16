@@ -262,7 +262,7 @@ calculate_sofa_score <- function(data, imputation = "normal") {
     data[, (subscore_variables) := as.integer(NA)]
     total_variable <- "sofa_score_no_imputation"
   } else {
-    warning("The imputation type should either be 'normal' or 'none'")
+    stop("The imputation type must be either 'normal' or 'none', not '", imputation, "'")
   }
 
   # Respiratory. Need to know PF ratio and if patient was on MV

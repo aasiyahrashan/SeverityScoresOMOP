@@ -149,7 +149,15 @@ get_score_variables <- function(conn, dialect, schema,
                                 visit_mode = "paste",
                                 paste_gap_hours = 6,
                                 ground_truth = NULL,
-                                run_validation = TRUE) {
+                                run_validation = TRUE,
+                                verbose = FALSE) {
+
+  # --- Validate dialect argument ---
+  supported_dialects <- c("postgresql", "sql server")
+  if (!tolower(dialect) %in% supported_dialects) {
+    stop("dialect must be one of: ", paste(supported_dialects, collapse = ", "),
+         ". Got: '", dialect, "'")
+  }
 
   # --- Validate visit_mode argument ---
   if (!visit_mode %in% c("paste", "raw", "ground_truth")) {
@@ -304,9 +312,11 @@ get_score_variables <- function(conn, dialect, schema,
     # pasted_visits_sql. In ground truth mode, @ground_truth_values is left
     # unrendered here — it gets filled per batch in the loop below.
 
-    # Running the query
-    cat("Printing GCS query \n")
-    cat(gcs_raw_sql)
+    # Print query if verbose
+    if (verbose) {
+      message("=== GCS Query ===")
+      message(gcs_raw_sql)
+    }
   }
 
   # Constructing the main query
@@ -335,8 +345,10 @@ get_score_variables <- function(conn, dialect, schema,
   # pasted_visits_sql. In ground truth mode, @ground_truth_values is left
   # unrendered here — it gets filled per batch in the loop below.
 
-  cat("Printing main query")
-  cat(raw_sql)
+  if (verbose) {
+    message("=== Main Query ===")
+    message(raw_sql)
+  }
 
   # --- Get person_ids for batching ---
   resolved_gt <- NULL  # Only populated in ground_truth mode
