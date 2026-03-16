@@ -121,8 +121,16 @@ build_visit_sql <- function(visit_mode, dialect,
 #' If TRUE (default), runs a bidirectional check comparing ground truth patients
 #' against OMOP ICU patients. Set to FALSE to skip this check (e.g. to avoid a
 #' slow visit_detail scan on large databases).
+#' @param verbose Logical. If TRUE, prints the rendered SQL queries to the
+#' console via \code{message()}. Defaults to FALSE.
+#' @param dry_run Logical. If TRUE, builds and returns the fully rendered SQL
+#' queries without executing them or connecting to the database (beyond
+#' ground truth ID resolution if in ground_truth mode). Returns a named list
+#' with elements \code{main_sql}, \code{gcs_sql} (or NULL), and
+#' \code{person_ids_sql} (the query used to find patient IDs, or NULL in
+#' ground truth mode). Useful for debugging and testing.
 #'
-#' @returns A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
+#' @returns If \code{dry_run = FALSE} (default): A tibble containing one row per combination of `person`, `visit_occurrence`, `visit_detail`, and `cadence`.
 #' The `time_in_icu` variable is the amount of time spent in ICU. The unit depends on cadence. If cadence is 24, the unit will be a day.
 #' If cadence is 1, the unit will be an hour, and so on.
 #' The columns returned will be named using the short_names specified in the `mapping_path` file.
@@ -150,7 +158,8 @@ get_score_variables <- function(conn, dialect, schema,
                                 paste_gap_hours = 6,
                                 ground_truth = NULL,
                                 run_validation = TRUE,
-                                verbose = FALSE) {
+                                verbose = FALSE,
+                                dry_run = FALSE) {
 
   # --- Validate dialect argument ---
   supported_dialects <- c("postgresql", "sql server")
@@ -180,7 +189,7 @@ get_score_variables <- function(conn, dialect, schema,
     # Validate the ground truth dataframe
     validate_ground_truth(ground_truth)
 
-    if (run_validation) {
+    if (run_validation && !dry_run) {
       message("Validating ground truth against OMOP...")
       validation_result <- validate_ground_truth_vs_omop(
         conn = conn,
@@ -348,6 +357,53 @@ get_score_variables <- function(conn, dialect, schema,
   if (verbose) {
     message("=== Main Query ===")
     message(raw_sql)
+  }
+
+  # --- Dry run: return rendered SQL without executing ---
+  if (dry_run) {
+    # Render with placeholder person IDs so the SQL is complete and runnable.
+    example_ids <- "1, 2, 3"
+
+    if (visit_mode == "ground_truth") {
+      ts_type <- if (tolower(dialect) == "postgresql") "TIMESTAMP" else "DATETIME"
+      example_gt_values <- glue(
+        "(1, 100, CAST('2000-01-01 00:00:00' AS {ts_type}), ",
+        "CAST('2000-01-02 00:00:00' AS {ts_type}))")
+      main_sql_example <- render(raw_sql, ground_truth_values = example_gt_values)
+      gcs_sql_example <- if (nrow(gcs_concepts) > 0) {
+        render(gcs_raw_sql, ground_truth_values = example_gt_values)
+      } else {
+        NULL
+      }
+    } else {
+      main_sql_example <- render(raw_sql, person_ids = example_ids)
+      gcs_sql_example <- if (nrow(gcs_concepts) > 0) {
+        render(gcs_raw_sql, person_ids = example_ids)
+      } else {
+        NULL
+      }
+    }
+
+    person_ids_sql <- if (visit_mode != "ground_truth") {
+      glue("SELECT DISTINCT person_id
+    FROM {schema}.visit_detail
+    WHERE visit_detail_concept_id IN (581379, 32037)
+    AND COALESCE(visit_detail_start_datetime,
+    visit_detail_start_date) <= '{end_date}'")
+    } else {
+      NULL
+    }
+
+    message("Dry run complete. Returning SQL without executing.")
+    return(list(
+      main_sql = main_sql_example,
+      gcs_sql = gcs_sql_example,
+      person_ids_sql = person_ids_sql,
+      # Also return the unrendered templates (with @person_ids/@ground_truth_values
+      # still present) for inspection.
+      main_sql_template = raw_sql,
+      gcs_sql_template = if (nrow(gcs_concepts) > 0) gcs_raw_sql else NULL
+    ))
   }
 
   # --- Get person_ids for batching ---
