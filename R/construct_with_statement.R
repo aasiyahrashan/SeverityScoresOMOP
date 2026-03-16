@@ -1,6 +1,9 @@
 with_query <- function(concepts, table_name, variable_names,
                        window_start_point, cadence){
-  # Constructs subqueries for every table except the drug one.
+  # Constructs a single CTE per OMOP table (except drugs, handled separately).
+  # Joins directly to admissions, filters by concept + time, and aggregates
+  # in one pass. This lets PostgreSQL 12+ push predicates into the join
+  # rather than materialising an intermediate filtered table.
 
   # Variable names, and return empty string if no concepts required
   concepts <- concepts %>%
@@ -18,12 +21,18 @@ with_query <- function(concepts, table_name, variable_names,
     return("")
   }
 
+  # Build datetime expressions.
+  # start_datetime_var = the datetime column (e.g. measurement_datetime)
+  # start_date_var     = the date column     (e.g. measurement_date)
+  # Prefer the datetime column; fall back to the date column with a cast.
+  datetime_expr <- glue(
+    "COALESCE(t.{variable_names$start_datetime_var}, CAST(t.{variable_names$start_date_var} AS TIMESTAMP))")
+  date_expr <- glue(
+    "COALESCE(CAST(t.{variable_names$start_datetime_var} AS DATE), t.{variable_names$start_date_var})")
+
   # Windowing query. Visit detail window time is always 0, since it's the beginning of the admission
   if(table_name != "Visit Detail"){
-    window <- window_query(window_start_point,
-                           "t.table_datetime",
-                           "t.table_date",
-                           cadence)
+    window <- window_query(window_start_point, datetime_expr, date_expr, cadence)
   } else {
     window <- 0
   }
@@ -37,64 +46,48 @@ with_query <- function(concepts, table_name, variable_names,
   where_expression <- where_clause(concepts, variable_names, table_name)
 
   # Units of measure join.
-  units_of_measure_query <- units_of_measure_query(table_name)
+  units_of_measure_join <- units_of_measure_query(table_name)
 
-  # Constructing main query
   with_query <-
     glue("
-    -- {table_name} Filter by person and concept ID to reduce table size
-    , {variable_names$alias}_filtered as (
-      SELECT
-      t.*,
-      c.concept_name,
-      c.concept_code,
-      COALESCE(CAST({variable_names$start_datetime_var} AS DATE), {variable_names$start_date_var}) AS table_date,
-      COALESCE({variable_names$start_datetime_var}, CAST({variable_names$start_date_var} AS TIMESTAMP)) AS table_datetime
-      FROM @schema.{variable_names$db_table_name} t
-    INNER JOIN
-    (SELECT distinct person_id from
-    icu_admission_details_multiple_visits) adm
-    ON t.person_id = adm.person_id
-    -- For string searching by concept name if required
-    INNER JOIN @schema.concept c
-    ON c.concept_id = t.{variable_names$concept_id_var}
-      WHERE {where_expression})
-
-    --- Filter by timestamp and create one row per time
-    , {variable_names$alias} as (
+    -- {table_name}: filter, join to admissions, and aggregate in a single pass
+    , {variable_names$alias} AS (
     SELECT
        t.person_id,
        adm.icu_admission_datetime,
-  	   {window} as time_in_icu
+       {window} AS time_in_icu
        {variables}
-
     FROM icu_admission_details_multiple_visits adm
-    INNER JOIN {variable_names$alias}_filtered t
-    ON adm.person_id = t.person_id
-    AND (
-       adm.visit_occurrence_id = t.visit_occurrence_id
-       OR (t.visit_occurrence_id IS NULL
-           AND t.table_datetime >= adm.hospital_admission_datetime
-           AND t.table_datetime <  adm.hospital_discharge_datetime)
-      )
-    {units_of_measure_query}
-    WHERE {window} >= @first_window
-  	AND {window} <= @last_window
-  	GROUP BY
-    t.person_id,
-    adm.icu_admission_datetime,
-    {window}) ")
+    INNER JOIN @schema.{variable_names$db_table_name} t
+      ON adm.person_id = t.person_id
+      AND (
+         adm.visit_occurrence_id = t.visit_occurrence_id
+         OR (t.visit_occurrence_id IS NULL
+             AND {datetime_expr} >= adm.hospital_admission_datetime
+             AND {datetime_expr} <  adm.hospital_discharge_datetime)
+        )
+    INNER JOIN @schema.concept c
+      ON c.concept_id = t.{variable_names$concept_id_var}
+    {units_of_measure_join}
+    WHERE ({where_expression})
+      AND {window} >= @first_window
+      AND {window} <= @last_window
+    GROUP BY
+      t.person_id,
+      adm.icu_admission_datetime,
+      {window}) ")
   with_query
 }
+
 
 drug_with_query <- function(concepts, variable_names,
                             window_start_point, cadence,
                             dialect){
 
-  # The drug table query is completely different because it needs to account for both
-  # start and end times.
+  # The drug table needs generate_series / OUTER APPLY to expand date ranges
+  # into individual time windows. It keeps a _filtered CTE because the lateral
+  # join needs a pre-filtered set to expand.
 
-  # Getting data for the drug table only
   concepts <- concepts %>%
     filter(table == "Drug")
   variable_names <- variable_names %>%
@@ -123,7 +116,7 @@ drug_with_query <- function(concepts, variable_names,
 
   drug_with_query <-
     glue("
-    -- Drug Filter by person and concept because they're indexed
+    -- Drug: filter by person and concept (needed before lateral join expansion)
     , drg_filtered AS (
     SELECT
     t.person_id,
@@ -132,32 +125,26 @@ drug_with_query <- function(concepts, variable_names,
     t.drug_concept_id,
     c.concept_name,
     c.concept_code,
-    COALESCE(CAST({variable_names$start_datetime_var} AS DATE), {variable_names$start_date_var}) AS table_date,
-    COALESCE({variable_names$start_datetime_var}, CAST({variable_names$start_date_var} AS TIMESTAMP)) AS table_datetime,
-    COALESCE(CAST({variable_names$end_datetime_var} AS DATE), {variable_names$end_date_var}) AS table_end_date,
-    COALESCE({variable_names$end_datetime_var}, CAST({variable_names$end_date_var} AS TIMESTAMP)) AS table_end_datetime
+    COALESCE(CAST(t.{variable_names$start_datetime_var} AS DATE), t.{variable_names$start_date_var}) AS table_date,
+    COALESCE(t.{variable_names$start_datetime_var}, CAST(t.{variable_names$start_date_var} AS TIMESTAMP)) AS table_datetime,
+    COALESCE(CAST(t.{variable_names$end_datetime_var} AS DATE), t.{variable_names$end_date_var}) AS table_end_date,
+    COALESCE(t.{variable_names$end_datetime_var}, CAST(t.{variable_names$end_date_var} AS TIMESTAMP)) AS table_end_datetime
     FROM @schema.drug_exposure t
     INNER JOIN
-    (SELECT distinct person_id from
+    (SELECT DISTINCT person_id FROM
     icu_admission_details_multiple_visits) adm
     ON t.person_id = adm.person_id
     INNER JOIN @schema.concept c
       ON c.concept_id = t.drug_concept_id
     WHERE {where_expression} )
 
-    -- Now summarise variables
+    -- Drug: join to admissions, expand date ranges, aggregate
     , drg AS (
-    --- Note, this query will double count overlaps.
-      --- If a person has two versions of a single drug, with overalapping start and end dates,
-      --- the drug will be double counted.
       SELECT
           t.person_id
-           -- can't rely on visit occurrence and visit detail IDs being linked to these tables.
-           -- So not selecting them. Identifying visits by person ID + admission time
           ,t.icu_admission_datetime
           ,gs.time_in_icu
           {variables}
-      --- Filtering whole table for string matches so don't need to lateral join the whole thing
       FROM (
           SELECT
           adm.person_id,
@@ -171,8 +158,6 @@ drug_with_query <- function(concepts, variable_names,
           FROM icu_admission_details_multiple_visits adm
           INNER JOIN drg_filtered i
           ON adm.person_id = i.person_id
-          -- Visit occurrence is not always linked to the other tables.
-        	-- So joining by time instead.
         	AND (adm.visit_occurrence_id = i.visit_occurrence_id
         	      OR ((i.visit_occurrence_id IS NULL)
         	          AND (i.table_datetime >= adm.hospital_admission_datetime)
@@ -187,32 +172,34 @@ drug_with_query <- function(concepts, variable_names,
       ,gs.time_in_icu)")
   drug_with_query
 }
-end_join_query <- function(table_name, variable_names, prev_alias){
-  # Constructs the segment that joins each 'with' subquery to other
-  # subqueries run before it.
 
-  # Reading variable names
-  variable_names <- variable_names %>%
-    filter(table == table_name)
 
-  # Getting strings for coalesce
-  time_in_icu <- gsub("placeholder", "time_in_icu", prev_alias)
-  person_id <- gsub("placeholder", "person_id", prev_alias)
-  icu_admission_datetime <- gsub("placeholder", "icu_admission_datetime", prev_alias)
+#' Build a UNION spine of all (person_id, icu_admission_datetime, time_in_icu)
+#' from every table CTE. Replaces the old FULL JOIN chain with COALESCE keys.
+#' UNION (not UNION ALL) deduplicates, so a patient-day present in multiple
+#' tables appears once in the spine.
+#'
+#' @param aliases Character vector of CTE alias names (e.g. c("m", "o", "drg"))
+#' @return A SQL string defining the spine CTE.
+spine_query <- function(aliases) {
+  union_parts <- glue(
+    "SELECT DISTINCT person_id, icu_admission_datetime, time_in_icu FROM {aliases}")
+  glue(", spine AS (\n    ",
+       glue_collapse(union_parts, sep = "\n    UNION\n    "),
+       "\n  )")
+}
 
-  # The first table is just a from statement
-  if(is.na(prev_alias)) {
-    end_join_query = glue("FROM {variable_names$alias}")
-  } else {
-    end_join_query <-
-      glue("
-    FULL JOIN {variable_names$alias}
-        ON COALESCE({person_id}) = {variable_names$alias}.person_id
-       AND COALESCE({icu_admission_datetime}) = {variable_names$alias}.icu_admission_datetime
-       AND COALESCE({time_in_icu}) = {variable_names$alias}.time_in_icu
-       AND {variable_names$alias}.time_in_icu >= @first_window
-			 AND {variable_names$alias}.time_in_icu <= @last_window
-         ")
-  }
-  end_join_query
+
+#' Build LEFT JOINs from the spine to each table CTE.
+#' Each join is on plain columns (no COALESCE), so the DB can use indexes.
+#'
+#' @param aliases Character vector of CTE alias names.
+#' @return A SQL string with FROM spine + LEFT JOIN clauses.
+spine_join_query <- function(aliases) {
+  joins <- glue("
+    LEFT JOIN {aliases}
+      ON spine.person_id = {aliases}.person_id
+      AND spine.icu_admission_datetime = {aliases}.icu_admission_datetime
+      AND spine.time_in_icu = {aliases}.time_in_icu")
+  glue("FROM spine\n", glue_collapse(joins, sep = "\n"))
 }

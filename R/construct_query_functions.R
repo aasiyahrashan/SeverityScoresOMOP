@@ -364,11 +364,3 @@ all_required_variables_query <- function(concepts){
   glue(",", glue_collapse(all_required_variables$short_name, sep = ", "))
 
 }
-
-# Given a vector of table aliases, returns them
-# in a single comma separated string with a variable name pasted on.
-all_id_vars <- function(alias, string){
-  all_time_in_icu <- glue_collapse(
-    glue("{alias}.{string}"),
-    sep = ", ")
-}

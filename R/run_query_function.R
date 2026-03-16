@@ -272,28 +272,21 @@ get_score_variables <- function(conn, dialect, schema,
                                window_start_point = window_start_point,
                                cadence)))
 
-  # Constructing end join query for each table.
-  end_join_queries <-
-    concepts %>%
+  # Get the list of table aliases (in the same order as the with queries).
+  table_aliases <- concepts %>%
     distinct(table) %>%
-    # Need to get alias of the previous table for the timing join, if it exists.
     left_join(variable_names %>% select(table, alias),
               by = "table") %>%
-    # Pasting all previous aliases together so I can use it in a coalesce for a join.
-    mutate(prev_alias = accumulate(glue("{alias}.placeholder"),
-                                   ~ glue("{.x}, {.y}"))) %>%
-    mutate(prev_alias = lag(prev_alias)) %>%
-    # end_join_query is not vectorised
-    rowwise() %>%
-    mutate(end_join_query = end_join_query(table, variable_names,
-                                           prev_alias)) %>%
-    ungroup()
+    pull(alias)
 
   # Combining each query type into a string
   all_with_queries <- glue_collapse(with_queries_per_table,
                                     sep = "\n")
-  all_end_join_queries <- glue_collapse(end_join_queries$end_join_query,
-                                        sep = "\n")
+
+  # Build the spine CTE and LEFT JOIN clauses (replaces old FULL JOIN chain).
+  all_spine_query <- spine_query(table_aliases)
+  all_spine_joins <- spine_join_query(table_aliases)
+
   # All required variables for the queries
   all_required_variables <- all_required_variables_query(concepts)
 
@@ -340,10 +333,8 @@ get_score_variables <- function(conn, dialect, schema,
       schema = schema,
       age_query = age_query,
       all_with_queries = all_with_queries,
-      all_end_join_queries = all_end_join_queries,
-      all_time_in_icu = all_id_vars(end_join_queries$alias, "time_in_icu"),
-      all_person_id = all_id_vars(end_join_queries$alias, "person_id"),
-      all_icu_admission_datetime = all_id_vars(end_join_queries$alias, "icu_admission_datetime"),
+      spine_query = all_spine_query,
+      spine_joins = all_spine_joins,
       all_required_variables = all_required_variables) %>%
     translate(tolower(dialect)) %>%
     # There is a bug in SQL render which means dates need to be rendered after translating
