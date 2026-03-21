@@ -119,7 +119,10 @@ render_batch_params <- function(sql, visit_mode, person_ids_batch,
 # Temp table management
 # ---------------------------------------------------------------------------
 
-#' Drop a temp table safely (dialect-aware, non-fatal on error).
+#' Drop a temp table (dialect-aware).
+#'
+#' Uses DROP TABLE IF EXISTS on PostgreSQL (no error if missing).
+#' Uses conditional drop on SQL Server.
 #'
 #' @param conn DBI connection.
 #' @param table_name Name of the temp table.
@@ -132,7 +135,7 @@ drop_temp_table <- function(conn, table_name, dialect) {
   } else {
     glue("DROP TABLE IF EXISTS {table_name}")
   }
-  tryCatch(dbExecute(conn, sql), error = function(e) NULL)
+  dbExecute(conn, sql)
 }
 
 
@@ -143,20 +146,32 @@ drop_temp_table <- function(conn, table_name, dialect) {
 #' @param dialect SQL dialect.
 #'
 #' @importFrom DBI dbExecute
-#' @importFrom SqlRender translate
 #' @importFrom glue glue glue_collapse
 #' @keywords internal
 create_person_batch <- function(conn, person_ids_batch, dialect) {
   drop_temp_table(conn, "person_batch", dialect)
-  dbExecute(conn, translate("CREATE TEMP TABLE person_batch (person_id INT)",
-                            targetDialect = tolower(dialect)))
+
+  # Use raw SQL — CREATE TEMP TABLE is standard and doesn't need SqlRender.
+  # On SQL Server, TEMP TABLE syntax differs but SqlRender's translation
+  # of this specific statement has been unreliable in some versions.
+  if (tolower(dialect) == "sql server") {
+    dbExecute(conn, "CREATE TABLE #person_batch (person_id INT)")
+  } else {
+    dbExecute(conn, "CREATE TEMP TABLE person_batch (person_id INT)")
+  }
+
   id_rows <- glue_collapse(glue("({person_ids_batch})"), sep = ", ")
   dbExecute(conn, glue("INSERT INTO person_batch VALUES {id_rows}"))
-  dbExecute(conn, if (tolower(dialect) == "sql server") {
-    "UPDATE STATISTICS person_batch"
+
+  if (tolower(dialect) == "sql server") {
+    dbExecute(conn, "UPDATE STATISTICS #person_batch")
   } else {
-    "ANALYZE person_batch"
-  })
+    dbExecute(conn, "ANALYZE person_batch")
+  }
+
+  # Verify the table was populated
+  n <- dbGetQuery(conn, "SELECT COUNT(*) AS n FROM person_batch")$n
+  message("  person_batch: ", n, " patients loaded")
 }
 
 
@@ -449,26 +464,40 @@ execute_batch <- function(conn, person_ids_batch, admission_sql,
   }
 
   # Admission details
+  t0 <- Sys.time()
   adm <- as.data.table(dbGetQuery(conn, render_batch(admission_sql)))
+  message("  admissions: ", nrow(adm), " rows (",
+          round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
 
   # Physiology queries — pivot long-format immediately
-
   physiology <- list()
   for (nm in names(query_templates)) {
+    t0 <- Sys.time()
     raw <- dbGetQuery(conn, render_batch(query_templates[[nm]]$sql))
-    if (is.null(raw) || nrow(raw) == 0) next
+    elapsed <- round(difftime(Sys.time(), t0, units = "secs"), 1)
+
+    if (is.null(raw) || nrow(raw) == 0) {
+      message("  ", nm, ": 0 rows (", elapsed, "s)")
+      next
+    }
 
     if (query_templates[[nm]]$type == "long") {
       pivoted <- pivot_long_to_wide(as.data.table(raw), concept_map)
+      message("  ", nm, ": ", nrow(raw), " long rows -> ",
+              nrow(pivoted), " wide rows (", elapsed, "s)")
       if (nrow(pivoted) > 0) physiology[[nm]] <- pivoted
     } else {
+      message("  ", nm, ": ", nrow(raw), " rows (", elapsed, "s)")
       physiology[[nm]] <- as.data.table(raw)
     }
   }
 
   # GCS
   if (!is.null(gcs_sql)) {
+    t0 <- Sys.time()
     gcs_raw <- dbGetQuery(conn, render_batch(gcs_sql))
+    message("  gcs: ", if (is.null(gcs_raw)) 0 else nrow(gcs_raw),
+            " rows (", round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
     if (!is.null(gcs_raw) && nrow(gcs_raw) > 0) {
       physiology[["gcs"]] <- as.data.table(gcs_raw)
     }

@@ -270,7 +270,8 @@ validate_ground_truth_vs_omop <- function(conn,
                  WHERE {qpk} IN ({key_list})")
     sql <- translate(sql, tolower(dialect))
     result <- dbGetQuery(conn, sql)
-    found_keys <- c(found_keys, result[[1]])
+    colnames(result)[1] <- omop_person_key
+    found_keys <- c(found_keys, result[[omop_person_key]])
   }
 
   gt_missing <- setdiff(as.character(gt_patient_keys),
