@@ -225,8 +225,16 @@ get_score_variables <- function(conn, dialect, schema,
                         "Procedure", "Visit Detail", "Device", "Drug")) %>%
     mutate(concept_id = as.character(concept_id))
 
-  # Older versions of the concepts files may not have the additional filter variables.
-  # Adding them here.
+  # Older versions of the concepts files may not have all optional columns.
+  # Adding them here if missing.
+  if (!"concept_id_value" %in% colnames(concepts)){
+    concepts <- concepts %>%
+      mutate(concept_id_value = NA)
+  }
+  if (!"name_of_value" %in% colnames(concepts)){
+    concepts <- concepts %>%
+      mutate(name_of_value = NA)
+  }
   if (!"additional_filter_variable_name" %in% colnames(concepts)){
     concepts <- concepts %>%
       mutate(additional_filter_variable_name = NA,
