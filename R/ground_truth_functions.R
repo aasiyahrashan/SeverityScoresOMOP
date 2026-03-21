@@ -1,3 +1,28 @@
+# =============================================================================
+# ground_truth_functions.R
+# =============================================================================
+
+
+#' Quote a SQL identifier for the target dialect.
+#'
+#' PostgreSQL lowercases unquoted identifiers, so mixed-case column names
+#' like "PatientDurableKey" must be double-quoted. SQL Server uses square
+#' brackets. This function wraps a column name for safe use in dynamic SQL.
+#'
+#' @param identifier Column or table name to quote.
+#' @param dialect SQL dialect ("postgresql" or "sql server").
+#'
+#' @return The quoted identifier string.
+#' @keywords internal
+quote_identifier <- function(identifier, dialect) {
+  if (tolower(dialect) == "sql server") {
+    paste0("[", identifier, "]")
+  } else {
+    paste0('"', identifier, '"')
+  }
+}
+
+
 #' Create a ground truth configuration object.
 #'
 #' Bundles all ground-truth-related parameters into a single object
@@ -222,6 +247,9 @@ validate_ground_truth_vs_omop <- function(conn,
   gt_person_key <- gt_config$gt_person_key
   omop_person_key <- gt_config$omop_person_key
 
+  # Quote column names for safe use in SQL (PostgreSQL lowercases unquoted identifiers)
+  qpk <- quote_identifier(omop_person_key, dialect)
+
   # --- Check 1: Which GT patients are missing from OMOP? ---
   gt_patient_keys <- unique(ground_truth_df[[gt_person_key]])
 
@@ -237,9 +265,9 @@ validate_ground_truth_vs_omop <- function(conn,
       key_list <- paste0("'", batch, "'", collapse = ", ")
     }
 
-    sql <- glue("SELECT DISTINCT {omop_person_key}
+    sql <- glue("SELECT DISTINCT {qpk}
                  FROM {joining_schema}.{joining_person_table}
-                 WHERE {omop_person_key} IN ({key_list})")
+                 WHERE {qpk} IN ({key_list})")
     sql <- translate(sql, tolower(dialect))
     result <- dbGetQuery(conn, sql)
     found_keys <- c(found_keys, result[[1]])
@@ -258,7 +286,7 @@ validate_ground_truth_vs_omop <- function(conn,
 
   # --- Check 2: Which OMOP ICU patients are missing from GT? ---
   omop_icu_sql <- glue("
-    SELECT DISTINCT jp.{omop_person_key}, vd.person_id
+    SELECT DISTINCT jp.{qpk}, vd.person_id
     FROM {schema}.visit_detail vd
     INNER JOIN {joining_schema}.{joining_person_table} jp
       ON vd.person_id = jp.person_id
@@ -269,6 +297,9 @@ validate_ground_truth_vs_omop <- function(conn,
           <= '{end_date}'")
   omop_icu_sql <- translate(omop_icu_sql, tolower(dialect))
   omop_icu_patients <- dbGetQuery(conn, omop_icu_sql)
+
+  # Normalise column name from DB result
+  if (ncol(omop_icu_patients) >= 1) colnames(omop_icu_patients)[1] <- omop_person_key
 
   if (nrow(omop_icu_patients) > 0) {
     omop_missing <- omop_icu_patients[
@@ -327,6 +358,10 @@ resolve_ground_truth_ids <- function(conn, gt_config, dialect) {
   gt_icu_admission_col  <- gt_config$gt_icu_admission_col
   gt_icu_discharge_col  <- gt_config$gt_icu_discharge_col
 
+  # Quote column names for SQL (PostgreSQL lowercases unquoted identifiers)
+  qpk <- quote_identifier(omop_person_key, dialect)
+  qek <- quote_identifier(omop_encounter_key, dialect)
+
   # --- Resolve person keys to person_id ---
   gt_patient_keys <- unique(ground_truth_df[[gt_person_key]])
 
@@ -337,9 +372,9 @@ resolve_ground_truth_ids <- function(conn, gt_config, dialect) {
       paste0("'", gt_patient_keys, "'"), sep = ", ")
   }
 
-  person_sql <- glue("SELECT DISTINCT {omop_person_key}, person_id
+  person_sql <- glue("SELECT DISTINCT {qpk}, person_id
                       FROM {joining_schema}.{joining_person_table}
-                      WHERE {omop_person_key} IN ({key_list})")
+                      WHERE {qpk} IN ({key_list})")
   person_sql <- translate(person_sql, tolower(dialect))
   person_map <- dbGetQuery(conn, person_sql)
 
@@ -353,11 +388,18 @@ resolve_ground_truth_ids <- function(conn, gt_config, dialect) {
       paste0("'", gt_encounter_keys, "'"), sep = ", ")
   }
 
-  visit_sql <- glue("SELECT DISTINCT {omop_encounter_key}, visit_occurrence_id
+  visit_sql <- glue("SELECT DISTINCT {qek}, visit_occurrence_id
                      FROM {joining_schema}.{joining_visit_table}
-                     WHERE {omop_encounter_key} IN ({enc_list})")
+                     WHERE {qek} IN ({enc_list})")
   visit_sql <- translate(visit_sql, tolower(dialect))
   visit_map <- dbGetQuery(conn, visit_sql)
+
+  # Normalise column names: the DB may return the quoted column name in a
+  # different case than expected (e.g. PostgreSQL may lowercase it despite
+  # quoting, depending on driver version). Force the first column to match
+  # the expected key name so merge() works.
+  if (ncol(person_map) >= 1) colnames(person_map)[1] <- omop_person_key
+  if (ncol(visit_map) >= 1)  colnames(visit_map)[1]  <- omop_encounter_key
 
   # --- Join mappings to ground truth ---
   resolved <- merge(
