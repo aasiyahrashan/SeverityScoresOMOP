@@ -356,7 +356,7 @@ execute_batch <- function(conn, person_ids_batch,
       dbExecute(conn, rendered)
     }
     n_filtered <- dbGetQuery(conn,
-      glue("SELECT COUNT(*) AS n FROM {filtered_temp_name}"))$n
+                             glue("SELECT COUNT(*) AS n FROM {filtered_temp_name}"))$n
     message("  ", filtered_temp_name, ": ", n_filtered, " rows (",
             round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
     temp_tables_to_drop <- c(temp_tables_to_drop, filtered_temp_name)
@@ -408,7 +408,8 @@ execute_batch <- function(conn, person_ids_batch,
         dialect, start_date, end_date)
       dbExecute(conn, rendered)
     }
-    temp_tables_to_drop <- c(temp_tables_to_drop, "drg_filtered_temp")
+    temp_tables_to_drop <- c(temp_tables_to_drop,
+                             "drg_filtered_temp", "ancestor_map", "drg_tagged")
 
     rendered <- render_and_translate(
       drug_result$select_sql, schema, age_qry, first_window, last_window,
@@ -633,8 +634,8 @@ get_score_variables <- function(conn, dialect, schema,
   if (visit_mode == "ground_truth" && !is.null(resolved_gt)) {
     gt_join <- as.data.table(resolved_gt)
     gt_join <- gt_join[, !names(gt_join) %in%
-                          c("visit_occurrence_id", "icu_discharge_datetime"),
-                        with = FALSE]
+                         c("visit_occurrence_id", "icu_discharge_datetime"),
+                       with = FALSE]
     gt_join <- unique(gt_join, by = c("person_id", "icu_admission_datetime"))
     data <- merge(data, gt_join,
                   by = c("person_id", "icu_admission_datetime"), all.x = TRUE)
