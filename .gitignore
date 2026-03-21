@@ -2,4 +2,6 @@
 secrets.R
 .Rhistory
 inst/*_concepts.csv
+*.RData
+ground_truth_test.csv
 !inst/example_concepts.csv!

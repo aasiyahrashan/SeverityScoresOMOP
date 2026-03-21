@@ -380,19 +380,34 @@ build_drug_statements <- function(concepts, variable_names,
   # --- Step 2: drg_filtered_temp ---
   # Filter drug_exposure by person_batch. Use ancestor_map for concept filtering
   # instead of correlated subqueries.
-  if (nrow(ancestor_drugs) > 0 && nrow(non_ancestor_drugs) == 0) {
-    # All drug variables use ancestor lookup
-    where_expr <- glue("drug_concept_id IN (SELECT descendant_concept_id FROM ancestor_map)")
-  } else if (nrow(ancestor_drugs) > 0 && nrow(non_ancestor_drugs) > 0) {
-    # Mix of ancestor and direct concept_id drugs
-    direct_ids <- unique(non_ancestor_drugs$concept_id)
-    where_expr <- glue(
-      "(drug_concept_id IN (SELECT descendant_concept_id FROM ancestor_map)",
-      " OR drug_concept_id IN ({glue_collapse(direct_ids, sep = ', ')}))")
+  # String search drugs (concept_name LIKE ...) need a concept join.
+  direct_id_drugs <- non_ancestor_drugs[
+    !(non_ancestor_drugs$omop_variable %in% c("concept_name", "concept_code")) |
+      is.na(non_ancestor_drugs$omop_variable), ]
+  string_search_drugs <- non_ancestor_drugs[
+    non_ancestor_drugs$omop_variable %in% c("concept_name", "concept_code") &
+      !is.na(non_ancestor_drugs$omop_variable), ]
+
+  where_parts <- character(0)
+  if (nrow(ancestor_drugs) > 0)
+    where_parts <- c(where_parts,
+                     "drug_concept_id IN (SELECT descendant_concept_id FROM ancestor_map)")
+  if (nrow(direct_id_drugs) > 0)
+    where_parts <- c(where_parts,
+                     glue("drug_concept_id IN ({glue_collapse(unique(direct_id_drugs$concept_id), sep = ', ')})"))
+  if (nrow(string_search_drugs) > 0) {
+    str_exprs <- string_search_drugs %>%
+      distinct(omop_variable, concept_id) %>%
+      reframe(expr = glue(
+        "LOWER(c.{omop_variable}) LIKE '%{tolower(concept_id)}%'")) %>%
+      pull(expr)
+    where_parts <- c(where_parts, str_exprs)
+  }
+
+  if (length(where_parts) == 0) {
+    where_expr <- "false"
   } else {
-    # No ancestor drugs — direct concept_id filter only
-    direct_ids <- unique(drug$concept_id)
-    where_expr <- glue("drug_concept_id IN ({glue_collapse(direct_ids, sep = ', ')})")
+    where_expr <- paste0("(", paste(where_parts, collapse = " OR "), ")")
   }
 
   setup_stmts <- c(setup_stmts,

@@ -403,21 +403,33 @@ execute_batch <- function(conn, person_ids_batch,
   if (!is.null(drug_result)) {
     t0 <- Sys.time()
     for (stmt in drug_result$filtered_stmts) {
+      t_step <- Sys.time()
       rendered <- render_and_translate(
         stmt, schema, age_qry, first_window, last_window,
         dialect, start_date, end_date)
       dbExecute(conn, rendered)
+      # Log CREATE and ANALYZE steps (skip DROP which is instant)
+      if (grepl("^CREATE", stmt)) {
+        # Extract table name for logging
+        tbl_name <- sub("^CREATE TEMP TABLE (\\S+) AS.*", "\\1", stmt)
+        n <- dbGetQuery(conn, glue("SELECT COUNT(*) AS n FROM {tbl_name}"))$n
+        message("  drg setup ", tbl_name, ": ", n, " rows (",
+                round(difftime(Sys.time(), t_step, units = "secs"), 1), "s)")
+      }
     }
     temp_tables_to_drop <- c(temp_tables_to_drop,
                              "drg_filtered_temp", "ancestor_map", "drg_tagged")
 
+    t_agg <- Sys.time()
     rendered <- render_and_translate(
       drug_result$select_sql, schema, age_qry, first_window, last_window,
       dialect, start_date, end_date)
     raw <- dbGetQuery(conn, rendered)
-    elapsed <- round(difftime(Sys.time(), t0, units = "secs"), 1)
+    elapsed_agg <- round(difftime(Sys.time(), t_agg, units = "secs"), 1)
+    elapsed_total <- round(difftime(Sys.time(), t0, units = "secs"), 1)
     n_rows <- if (is.null(raw)) 0 else nrow(raw)
-    message("  drg: ", n_rows, " rows (", elapsed, "s)")
+    message("  drg agg: ", n_rows, " rows (", elapsed_agg, "s)")
+    message("  drg total: ", elapsed_total, "s")
     if (n_rows > 0) physiology[["drg"]] <- as.data.table(raw)
   }
 
