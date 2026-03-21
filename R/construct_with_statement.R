@@ -65,14 +65,14 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
   if (nrow(id_concepts) > 0) {
     ids <- unique(id_concepts$concept_id)
     expressions <- c(expressions,
-      glue("{vn$concept_id_var} IN ({glue_collapse(ids, sep = ', ')})"))
+                     glue("{vn$concept_id_var} IN ({glue_collapse(ids, sep = ', ')})"))
   }
   if (nrow(ancestor_concepts) > 0) {
     anc_ids <- unique(ancestor_concepts$concept_id)
     expressions <- c(expressions,
-      glue("{vn$concept_id_var} IN (SELECT descendant_concept_id FROM ",
-           "@schema.concept_ancestor WHERE ancestor_concept_id IN (",
-           "{glue_collapse(anc_ids, sep = ', ')}))"))
+                     glue("{vn$concept_id_var} IN (SELECT descendant_concept_id FROM ",
+                          "@schema.concept_ancestor WHERE ancestor_concept_id IN (",
+                          "{glue_collapse(anc_ids, sep = ', ')}))"))
   }
 
   # String search filter (requires concept join)
@@ -97,9 +97,9 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
   # Concept join for string search (only when needed)
   string_join <- ""
   if (has_string_search) {
-    string_join <- glue(
+    string_join <- paste0(
       "\n    INNER JOIN @schema.concept c_str",
-      "\n      ON c_str.concept_id = t.{vn$concept_id_var}")
+      "\n      ON c_str.concept_id = t.", vn$concept_id_var)
   }
 
   # Column list
