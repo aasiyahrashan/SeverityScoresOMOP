@@ -47,13 +47,11 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
     date_select <- ""
   }
 
-  # WHERE clause: concept_id filter + optional string search.
-  # String search (concept_name LIKE ...) requires joining the concept table.
-  # We only add that join when string search variables exist for this table.
-  has_string_search <- any(table_concepts$omop_variable %in%
-                             c("concept_name", "concept_code"), na.rm = TRUE)
+  # WHERE clause: concept_id filter only.
+  # String search variables (concept_name/concept_code) have already been
+  # resolved to numeric concept_ids in execute_batch before this function
+  # is called, so they appear as regular concept_id rows here.
 
-  # Concept_id-based filter (fast, uses index)
   id_concepts <- table_concepts[
     !(table_concepts$omop_variable %in% c("concept_name", "concept_code")) |
       is.na(table_concepts$omop_variable), ]
@@ -75,7 +73,7 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
                           "{glue_collapse(anc_ids, sep = ', ')}))"))
   }
 
-  # --- Column list and unit join (shared by both paths) ---
+  # --- Column list and unit join ---
   has_numeric <- any(table_concepts$omop_variable == "value_as_number", na.rm = TRUE)
   has_val_concept <- any(table_concepts$omop_variable == "value_as_concept_id",
                          na.rm = TRUE)
@@ -100,82 +98,19 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
   }
 
   # --- Build the CREATE TEMP TABLE statement ---
-  # Two strategies depending on whether string search variables exist:
-  #
-  # Without string search: single SELECT with concept_id IN (...) filter.
-  #   Fast — uses the concept_id index directly.
-  #
-  # With string search: UNION of two SELECTs:
-  #   1. Concept_id filter (no concept join, fast, covers most variables)
-  #   2. String search with concept join (matches few rows, but needs the join)
-  # This avoids forcing the concept join on all 1B+ measurement rows.
-
-  if (!has_string_search) {
-    # Simple case: no string search
-    if (length(expressions) == 0) {
-      where_expr <- "false"
-    } else {
-      where_expr <- paste0("(", paste(expressions, collapse = " OR "), ")")
-    }
-
-    create_sql <- glue(
-      "CREATE TEMP TABLE {temp_name} AS\n",
-      "SELECT\n",
-      "      {select_list}{date_select}{unit_select}\n",
-      "    FROM @schema.{vn$db_table_name} t{unit_join}\n",
-      "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
-      "      AND {where_expr}")
-
+  if (length(expressions) == 0) {
+    where_expr <- "false"
   } else {
-    # String search case: UNION two queries
-
-    # Part 1: concept_id filter (no concept join)
-    if (length(expressions) > 0) {
-      where_expr_ids <- paste0("(", paste(expressions, collapse = " OR "), ")")
-    } else {
-      where_expr_ids <- "false"
-    }
-
-    # For the string search part, we need concept_name/concept_code columns.
-    # For the concept_id part, those columns don't exist — use NULL placeholders
-    # so the UNION column lists match.
-    select_part1 <- glue(
-      "SELECT\n",
-      "      {select_list}{date_select}{unit_select},\n",
-      "      NULL::text AS concept_name, NULL::text AS concept_code\n",
-      "    FROM @schema.{vn$db_table_name} t{unit_join}\n",
-      "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
-      "      AND {where_expr_ids}")
-
-    # Part 2: string search with concept join (small result set)
-    str_concepts <- table_concepts[
-      table_concepts$omop_variable %in% c("concept_name", "concept_code") &
-        !is.na(table_concepts$omop_variable), ]
-    str_exprs <- str_concepts %>%
-      distinct(omop_variable, concept_id) %>%
-      reframe(expr = glue(
-        "LOWER(c_str.{omop_variable}) LIKE '%{tolower(concept_id)}%'")) %>%
-      pull(expr)
-    where_expr_str <- paste0("(", paste(str_exprs, collapse = " OR "), ")")
-
-    str_join <- paste0(
-      "\n    INNER JOIN @schema.concept c_str",
-      "\n      ON c_str.concept_id = t.", vn$concept_id_var)
-
-    select_part2 <- glue(
-      "SELECT\n",
-      "      {select_list}{date_select}{unit_select},\n",
-      "      c_str.concept_name, c_str.concept_code\n",
-      "    FROM @schema.{vn$db_table_name} t{unit_join}{str_join}\n",
-      "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
-      "      AND {where_expr_str}")
-
-    create_sql <- glue(
-      "CREATE TEMP TABLE {temp_name} AS\n",
-      "{select_part1}\n",
-      "UNION ALL\n",
-      "{select_part2}")
+    where_expr <- paste0("(", paste(expressions, collapse = " OR "), ")")
   }
+
+  create_sql <- glue(
+    "CREATE TEMP TABLE {temp_name} AS\n",
+    "SELECT\n",
+    "      {select_list}{date_select}{unit_select}\n",
+    "    FROM @schema.{vn$db_table_name} t{unit_join}\n",
+    "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
+    "      AND {where_expr}")
 
   c(glue("DROP TABLE IF EXISTS {temp_name}"),
     create_sql,
@@ -349,11 +284,12 @@ build_drug_statements <- function(concepts, variable_names,
   # All ancestor concept IDs across all groups
   all_ancestor_ids <- unique(ancestor_drugs$concept_id)
 
-  setup_stmts <- character(0)
+  # Separate ancestor_map statements (run once) from per-batch statements
+  ancestor_stmts <- character(0)
+  batch_stmts <- character(0)
 
   if (nrow(ancestor_drugs) > 0) {
-    # --- Step 1: ancestor_map ---
-    # One row per descendant_concept_id, with boolean flags per drug group.
+    # Build flag expressions for the ancestor_map
     flag_exprs <- ancestor_drugs %>%
       group_by(short_name) %>%
       summarise(
@@ -362,31 +298,24 @@ build_drug_statements <- function(concepts, variable_names,
       mutate(
         flag = glue("MAX(CASE WHEN ancestor_concept_id IN ({anc_ids}) ",
                     "THEN 1 ELSE 0 END) AS is_{short_name}"))
-
     flag_sql <- glue_collapse(flag_exprs$flag, sep = ",\n    ")
 
-    setup_stmts <- c(setup_stmts,
-                     "DROP TABLE IF EXISTS ancestor_map",
-                     glue(
-                       "CREATE TEMP TABLE ancestor_map AS\n",
-                       "SELECT DISTINCT descendant_concept_id,\n",
-                       "    {flag_sql}\n",
-                       "  FROM @schema.concept_ancestor\n",
-                       "  WHERE ancestor_concept_id IN ({glue_collapse(all_ancestor_ids, sep = ', ')})\n",
-                       "  GROUP BY descendant_concept_id"),
-                     "ANALYZE ancestor_map")
+    ancestor_stmts <- c(
+      "DROP TABLE IF EXISTS ancestor_map",
+      glue(
+        "CREATE TEMP TABLE ancestor_map AS\n",
+        "SELECT DISTINCT descendant_concept_id,\n",
+        "    {flag_sql}\n",
+        "  FROM @schema.concept_ancestor\n",
+        "  WHERE ancestor_concept_id IN ({glue_collapse(all_ancestor_ids, sep = ', ')})\n",
+        "  GROUP BY descendant_concept_id"),
+      "ANALYZE ancestor_map")
   }
 
   # --- Step 2: drg_filtered_temp ---
-  # Filter drug_exposure by person_batch. Use ancestor_map for concept filtering
-  # instead of correlated subqueries.
-  # String search drugs (concept_name LIKE ...) need a concept join.
   direct_id_drugs <- non_ancestor_drugs[
     !(non_ancestor_drugs$omop_variable %in% c("concept_name", "concept_code")) |
       is.na(non_ancestor_drugs$omop_variable), ]
-  string_search_drugs <- non_ancestor_drugs[
-    non_ancestor_drugs$omop_variable %in% c("concept_name", "concept_code") &
-      !is.na(non_ancestor_drugs$omop_variable), ]
 
   where_parts <- character(0)
   if (nrow(ancestor_drugs) > 0)
@@ -395,14 +324,6 @@ build_drug_statements <- function(concepts, variable_names,
   if (nrow(direct_id_drugs) > 0)
     where_parts <- c(where_parts,
                      glue("drug_concept_id IN ({glue_collapse(unique(direct_id_drugs$concept_id), sep = ', ')})"))
-  if (nrow(string_search_drugs) > 0) {
-    str_exprs <- string_search_drugs %>%
-      distinct(omop_variable, concept_id) %>%
-      reframe(expr = glue(
-        "LOWER(c.{omop_variable}) LIKE '%{tolower(concept_id)}%'")) %>%
-      pull(expr)
-    where_parts <- c(where_parts, str_exprs)
-  }
 
   if (length(where_parts) == 0) {
     where_expr <- "false"
@@ -410,7 +331,7 @@ build_drug_statements <- function(concepts, variable_names,
     where_expr <- paste0("(", paste(where_parts, collapse = " OR "), ")")
   }
 
-  setup_stmts <- c(setup_stmts,
+  batch_stmts <- c(batch_stmts,
                    "DROP TABLE IF EXISTS drg_filtered_temp",
                    glue(
                      "CREATE TEMP TABLE drg_filtered_temp AS\n",
@@ -429,9 +350,11 @@ build_drug_statements <- function(concepts, variable_names,
 
   # --- Step 3: drg_tagged (join ancestor flags) ---
   if (nrow(ancestor_drugs) > 0) {
-    flag_cols <- glue_collapse(glue("COALESCE(a.is_{unique(ancestor_drugs$short_name)}, 0) AS is_{unique(ancestor_drugs$short_name)}"), sep = ",\n    ")
+    flag_cols <- glue_collapse(glue(
+      "COALESCE(a.is_{unique(ancestor_drugs$short_name)}, 0) AS is_{unique(ancestor_drugs$short_name)}"),
+      sep = ",\n    ")
 
-    setup_stmts <- c(setup_stmts,
+    batch_stmts <- c(batch_stmts,
                      "DROP TABLE IF EXISTS drg_tagged",
                      glue(
                        "CREATE TEMP TABLE drg_tagged AS\n",
@@ -446,11 +369,8 @@ build_drug_statements <- function(concepts, variable_names,
   }
 
   # --- Step 4: aggregation SELECT ---
-  # Build COUNT expressions using pre-computed flags for ancestor drugs,
-  # and standard CASE WHEN for non-ancestor drugs.
   count_parts <- character(0)
 
-  # Ancestor drug groups: use flag columns
   if (nrow(ancestor_drugs) > 0) {
     for (sn in unique(ancestor_drugs$short_name)) {
       count_parts <- c(count_parts,
@@ -458,7 +378,6 @@ build_drug_statements <- function(concepts, variable_names,
     }
   }
 
-  # Non-ancestor drugs: standard CASE WHEN (concept_name search, direct ID, etc)
   if (nrow(non_ancestor_drugs) > 0) {
     non_anc_vars <- variables_query(non_ancestor_drugs, vn$concept_id_var, vn$id_var)
     if (non_anc_vars != "") count_parts <- c(count_parts, non_anc_vars)
@@ -491,5 +410,7 @@ build_drug_statements <- function(concepts, variable_names,
     "{drug_join}\n",
     "GROUP BY t.person_id, t.icu_admission_datetime, gs.time_in_icu")
 
-  list(filtered_stmts = setup_stmts, select_sql = select_sql)
+  list(ancestor_stmts = ancestor_stmts,
+       batch_stmts = batch_stmts,
+       select_sql = select_sql)
 }

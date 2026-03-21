@@ -113,7 +113,7 @@ where_clause <- function(concepts, variable_names, table_name) {
 
   concept_ids_required <- concepts[
     !(concepts$omop_variable %in% c("concept_name", "concept_code",
-                                     "ancestor_concept_id")) |
+                                    "ancestor_concept_id")) |
       is.na(concepts$omop_variable), ]
 
   strings_required <- concepts[
@@ -137,7 +137,7 @@ where_clause <- function(concepts, variable_names, table_name) {
       reframe(
         expr = glue("LOWER({omop_variable}) LIKE '%",
                     glue_collapse(tolower(concept_id),
-                                 sep = "%' OR LOWER({omop_variable}) LIKE '%"),
+                                  sep = "%' OR LOWER({omop_variable}) LIKE '%"),
                     "%'")) %>%
       pull(expr)
     expressions <- c(expressions, str_expr)

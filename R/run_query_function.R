@@ -3,18 +3,12 @@
 #
 # Main entry point: get_score_variables().
 #
-# Execution model per batch:
-#   1. CREATE TEMP TABLE person_batch + ANALYZE
-#   2. CREATE TEMP TABLE adm_multi_temp (from pasted visits) + ANALYZE
-#   3. CREATE TEMP TABLE adm_details_temp (deduplicated admissions) + ANALYZE
-#   4. For each OMOP table:
-#      a. CREATE TEMP TABLE {alias}_filtered_temp + ANALYZE
-#      b. SELECT (long or count aggregation) referencing temp tables only
-#   5. Drug: same pattern with drg_filtered_temp
-#   6. GCS query referencing adm_multi_temp
-#   7. DROP all temp tables except person_batch (dropped after last batch)
-#
-# Every query references temp tables — no CTE re-execution.
+# Structure:
+#   1. SETUP (once per call): resolve string searches, build all SQL templates,
+#      render and translate them. Create ancestor_map if Drug variables exist.
+#   2. BATCH LOOP: for each batch of patients, create temp tables, execute
+#      pre-built SQL, pivot, collect results.
+#   3. MERGE: combine batches, merge physiology with admissions.
 # =============================================================================
 
 
@@ -55,7 +49,6 @@ build_visit_sql <- function(visit_mode, dialect,
 # SQL helpers
 # ---------------------------------------------------------------------------
 
-#' Render schema/window params, translate, then render dates.
 #' @keywords internal
 render_and_translate <- function(sql, schema, age_qry,
                                  first_window, last_window,
@@ -68,14 +61,12 @@ render_and_translate <- function(sql, schema, age_qry,
            end_date = single_quote(end_date))
 }
 
-#' Fill batch-specific params (@person_ids or @ground_truth_values).
 #' @keywords internal
 render_batch_params <- function(sql, visit_mode, person_ids_batch,
                                 resolved_gt, dialect) {
   if (visit_mode == "ground_truth") {
-    gt_values <- build_ground_truth_values_clause(
-      resolved_gt, person_ids_batch, dialect)
-    render(sql, ground_truth_values = gt_values)
+    render(sql, ground_truth_values = build_ground_truth_values_clause(
+      resolved_gt, person_ids_batch, dialect))
   } else {
     render(sql, person_ids = glue_collapse(person_ids_batch, sep = ", "))
   }
@@ -98,50 +89,21 @@ drop_temp_table <- function(conn, table_name, dialect) {
 }
 
 #' @keywords internal
-create_person_batch <- function(conn, person_ids_batch, dialect) {
-  drop_temp_table(conn, "person_batch", dialect)
-  dbExecute(conn, "CREATE TEMP TABLE person_batch (person_id INT)")
-  id_rows <- glue_collapse(glue("({person_ids_batch})"), sep = ", ")
-  dbExecute(conn, glue("INSERT INTO person_batch VALUES {id_rows}"))
-  dbExecute(conn, "ANALYZE person_batch")
-  n <- dbGetQuery(conn, "SELECT COUNT(*) AS n FROM person_batch")$n
-  message("  person_batch: ", n, " patients loaded")
-}
-
-#' Materialise the pasted-visit CTEs as temp tables.
-#'
-#' Runs the pasted visits SQL once and creates:
-#'   - adm_multi_temp (icu_admission_details_multiple_visits)
-#'   - adm_details_temp (icu_admission_details — deduplicated with demographics)
-#'
-#' All subsequent per-table queries reference these temp tables directly.
-#'
-#' @param conn DBI connection.
-#' @param pasted_visits_rendered Fully rendered pasted visits SQL (with
-#'   person_ids or ground_truth_values filled in).
-#' @param dialect SQL dialect.
-#'
-#' @keywords internal
 create_admission_temp_tables <- function(conn, pasted_visits_rendered, dialect) {
-
-  # adm_multi_temp: the multiple-rows-per-visit table
   drop_temp_table(conn, "adm_multi_temp", dialect)
-  sql_multi <- paste0(
+  dbExecute(conn, paste0(
     "CREATE TEMP TABLE adm_multi_temp AS\n",
     pasted_visits_rendered, "\n",
-    "SELECT * FROM icu_admission_details_multiple_visits")
-  dbExecute(conn, sql_multi)
+    "SELECT * FROM icu_admission_details_multiple_visits"))
   dbExecute(conn, "ANALYZE adm_multi_temp")
   n_multi <- dbGetQuery(conn, "SELECT COUNT(*) AS n FROM adm_multi_temp")$n
   message("  adm_multi_temp: ", n_multi, " rows")
 
-  # adm_details_temp: deduplicated with demographics
   drop_temp_table(conn, "adm_details_temp", dialect)
-  sql_details <- paste0(
+  dbExecute(conn, paste0(
     "CREATE TEMP TABLE adm_details_temp AS\n",
     pasted_visits_rendered, "\n",
-    "SELECT * FROM icu_admission_details")
-  dbExecute(conn, sql_details)
+    "SELECT * FROM icu_admission_details"))
   dbExecute(conn, "ANALYZE adm_details_temp")
   n_details <- dbGetQuery(conn, "SELECT COUNT(*) AS n FROM adm_details_temp")$n
   message("  adm_details_temp: ", n_details, " admissions")
@@ -163,7 +125,6 @@ pivot_long_to_wide <- function(long_dt, concept_map) {
                   allow.cartesian = TRUE)
   if (nrow(mapped) == 0) return(data.table())
 
-  # Vectorised filter for additional_filter disambiguation
   has_filter <- !is.na(mapped$filter_col)
   if (any(has_filter)) {
     keep <- rep(TRUE, nrow(mapped))
@@ -275,32 +236,198 @@ normalise_concepts_columns <- function(concepts) {
 
 
 # ---------------------------------------------------------------------------
+# String search resolution
+# ---------------------------------------------------------------------------
+
+#' Resolve concept_name/concept_code searches to numeric concept_ids.
+#'
+#' Queries the concept table once for all string search terms, then replaces
+#' string search rows in the concepts dataframe with regular concept_id rows.
+#' After this, no downstream code needs to handle string searches.
+#'
+#' @param conn DBI connection.
+#' @param concepts The concepts dataframe.
+#' @param schema OMOP schema name.
+#' @param dialect SQL dialect.
+#'
+#' @return Updated concepts dataframe with string search rows replaced.
+#' @keywords internal
+resolve_string_searches <- function(conn, concepts, schema, dialect) {
+
+  str_rows <- which(
+    concepts$omop_variable %in% c("concept_name", "concept_code") &
+      !is.na(concepts$omop_variable))
+
+  if (length(str_rows) == 0) return(concepts)
+
+  str_concepts <- concepts[str_rows, ]
+  message("  resolving ", length(str_rows), " string search term(s) against concept table...")
+  t0 <- Sys.time()
+
+  # Build LIKE expressions for each unique (omop_variable, search_term) pair
+  like_exprs <- str_concepts %>%
+    distinct(omop_variable, concept_id) %>%
+    reframe(expr = glue(
+      "LOWER({omop_variable}) LIKE '%{tolower(concept_id)}%'")) %>%
+    pull(expr)
+
+  sql <- glue("SELECT DISTINCT concept_id, concept_name, concept_code ",
+              "FROM {schema}.concept WHERE {paste(like_exprs, collapse = ' OR ')}")
+  sql <- translate(sql, tolower(dialect))
+  resolved <- dbGetQuery(conn, sql)
+
+  message("  string search: ", nrow(resolved), " concept_ids resolved (",
+          round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
+
+  if (nrow(resolved) == 0) {
+    # No matches — remove string search rows entirely
+    return(concepts[-str_rows, ])
+  }
+
+  # For each string search short_name, find which resolved concept_ids match
+  # that specific search term (not all resolved ids)
+  new_rows_list <- list()
+  for (i in seq_len(nrow(str_concepts))) {
+    row <- str_concepts[i, ]
+    col <- row$omop_variable  # "concept_name" or "concept_code"
+    search_term <- tolower(row$concept_id)
+
+    matching_ids <- resolved$concept_id[
+      grepl(search_term, tolower(resolved[[col]]), fixed = TRUE)]
+
+    if (length(matching_ids) > 0) {
+      new <- row[rep(1, length(matching_ids)), ]
+      new$concept_id <- as.character(matching_ids)
+      new$omop_variable <- NA_character_  # now a plain count-by-concept-id
+      new_rows_list[[length(new_rows_list) + 1]] <- new
+    }
+  }
+
+  if (length(new_rows_list) > 0) {
+    expanded <- do.call(rbind, new_rows_list)
+    concepts <- rbind(concepts[-str_rows, ], expanded)
+  } else {
+    concepts <- concepts[-str_rows, ]
+  }
+
+  concepts
+}
+
+
+# ---------------------------------------------------------------------------
+# Query template building (once per call)
+# ---------------------------------------------------------------------------
+
+#' Build all pre-rendered SQL templates for per-table queries.
+#'
+#' Returns a list of table-level query specs. Each spec contains
+#' rendered SQL strings ready for execution — only batch-specific
+#' temp table creation varies per batch.
+#'
+#' @return A named list. Each element has: filtered_stmts (character vector),
+#'   long_sql (character or ""), count_sql (character or "").
+#' @keywords internal
+build_table_query_specs <- function(concepts, variable_names,
+                                    window_start_point, cadence,
+                                    schema, age_qry, first_window, last_window,
+                                    dialect, start_date, end_date) {
+
+  specs <- list()
+
+  tables <- unique(concepts$table[
+    concepts$table != "Drug" &
+      !(concepts$table == "Visit Detail" & concepts$short_name != "emergency_admission")])
+
+  render_sql <- function(sql) {
+    render_and_translate(sql, schema, age_qry, first_window, last_window,
+                         dialect, start_date, end_date)
+  }
+
+  for (tbl in tables) {
+    tbl_concepts <- concepts[
+      concepts$table == tbl &
+        !(concepts$table == "Visit Detail" & concepts$short_name != "emergency_admission"), ]
+    vn <- variable_names[variable_names$table == tbl, ]
+
+    # Filtered temp table statements
+    raw_stmts <- build_filtered_temp(tbl_concepts, tbl, variable_names)
+    rendered_stmts <- vapply(raw_stmts, render_sql, character(1))
+
+    # Aggregation queries
+    long_raw <- build_long_select(tbl_concepts, tbl, variable_names,
+                                  window_start_point, cadence)
+    count_raw <- build_count_select(tbl_concepts, tbl, variable_names,
+                                    window_start_point, cadence)
+
+    specs[[vn$alias]] <- list(
+      alias = vn$alias,
+      filtered_stmts = rendered_stmts,
+      filtered_temp_name = paste0(vn$alias, "_filtered_temp"),
+      long_sql = if (long_raw != "") render_sql(long_raw) else "",
+      count_sql = if (count_raw != "") render_sql(count_raw) else ""
+    )
+  }
+
+  specs
+}
+
+
+# ---------------------------------------------------------------------------
+# Drug setup (once per call)
+# ---------------------------------------------------------------------------
+
+#' Build drug SQL templates and create ancestor_map (once per call).
+#'
+#' ancestor_map is a session-level temp table that maps descendant_concept_ids
+#' to drug group flags. It's created once and persists across batches.
+#'
+#' @return A list with rendered_filtered_stmts, rendered_select_sql,
+#'   temp_tables (names of tables to drop per batch), and
+#'   ancestor_map_stmts (to create once).
+#' @keywords internal
+build_drug_query_spec <- function(concepts, variable_names,
+                                  window_start_point, cadence, dialect,
+                                  schema, age_qry, first_window, last_window,
+                                  start_date, end_date) {
+
+  drug_result <- build_drug_statements(concepts, variable_names,
+                                       window_start_point, cadence, dialect)
+  if (is.null(drug_result)) return(NULL)
+
+  render_sql <- function(sql) {
+    render_and_translate(sql, schema, age_qry, first_window, last_window,
+                         dialect, start_date, end_date)
+  }
+
+  # build_drug_statements now returns ancestor_stmts and batch_stmts separately
+  list(
+    ancestor_stmts = vapply(drug_result$ancestor_stmts, render_sql, character(1),
+                            USE.NAMES = FALSE),
+    batch_stmts = vapply(drug_result$batch_stmts, render_sql, character(1),
+                         USE.NAMES = FALSE),
+    select_sql = render_sql(drug_result$select_sql),
+    temp_tables = c("drg_filtered_temp", "drg_tagged")
+  )
+}
+
+
+# ---------------------------------------------------------------------------
 # Batch execution
 # ---------------------------------------------------------------------------
 
-#' Execute one batch using temp tables.
+#' Execute one batch using pre-built SQL templates.
 #'
-#' Per batch:
-#'   1. person_batch temp table
-#'   2. adm_multi_temp + adm_details_temp (pasted visits, once)
-#'   3. Per OMOP table: filtered_temp + SELECT (long or count)
-#'   4. Drug: drg_filtered_temp + SELECT
-#'   5. GCS
-#'   6. Drop per-table temp tables (person_batch survives for next batch)
-#'
+#' Only does database work — all SQL strings are pre-rendered.
 #' @keywords internal
 execute_batch <- function(conn, person_ids_batch,
                           pasted_visits_sql,
-                          concepts, variable_names,
-                          window_start_point, cadence, dialect,
-                          schema, age_qry, first_window, last_window,
-                          start_date, end_date,
-                          gcs_sql_template,
+                          table_specs, drug_spec, gcs_sql_template,
                           concept_map,
+                          schema, age_qry, dialect,
+                          start_date, end_date,
                           visit_mode, resolved_gt) {
 
   # --- 1. Admission temp tables ---
-  # Pasted visits SQL uses inline @person_ids, not the person_batch temp table.
   pv_rendered <- render_batch_params(
     pasted_visits_sql, visit_mode, person_ids_batch, resolved_gt, dialect)
   pv_rendered <- pv_rendered %>%
@@ -312,9 +439,6 @@ execute_batch <- function(conn, person_ids_batch,
   create_admission_temp_tables(conn, pv_rendered, dialect)
 
   # --- 2. Create person_batch from actual admissions ---
-  # Only patients with admissions in the date range. This is much smaller
-  # than the full batch (e.g. 417 vs 2791) and makes every subsequent
-  # IN (SELECT person_id FROM person_batch) filter faster.
   drop_temp_table(conn, "person_batch", dialect)
   dbExecute(conn, paste0(
     "CREATE TEMP TABLE person_batch AS ",
@@ -330,106 +454,56 @@ execute_batch <- function(conn, person_ids_batch,
   message("  admissions: ", nrow(adm), " rows (",
           round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
 
-  # --- 4. Per-table physiology queries ---
+  # --- 4. Per-table physiology queries (pre-rendered SQL) ---
   physiology <- list()
-
-  physiology_tables <- unique(concepts$table[
-    concepts$table != "Drug" &
-      !(concepts$table == "Visit Detail" & concepts$short_name != "emergency_admission")])
-
   temp_tables_to_drop <- character(0)
 
-  for (tbl in physiology_tables) {
-    tbl_concepts <- concepts[
-      concepts$table == tbl &
-        !(concepts$table == "Visit Detail" & concepts$short_name != "emergency_admission"), ]
-    vn <- variable_names[variable_names$table == tbl, ]
-    filtered_temp_name <- paste0(vn$alias, "_filtered_temp")
-
+  for (spec in table_specs) {
     # Create filtered temp table
     t0 <- Sys.time()
-    stmts <- build_filtered_temp(tbl_concepts, tbl, variable_names)
-    for (stmt in stmts) {
-      rendered <- render_and_translate(
-        stmt, schema, age_qry, first_window, last_window,
-        dialect, start_date, end_date)
-      dbExecute(conn, rendered)
-    }
+    for (stmt in spec$filtered_stmts) dbExecute(conn, stmt)
     n_filtered <- dbGetQuery(conn,
-                             glue("SELECT COUNT(*) AS n FROM {filtered_temp_name}"))$n
-    message("  ", filtered_temp_name, ": ", n_filtered, " rows (",
+                             glue("SELECT COUNT(*) AS n FROM {spec$filtered_temp_name}"))$n
+    message("  ", spec$filtered_temp_name, ": ", n_filtered, " rows (",
             round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
-    temp_tables_to_drop <- c(temp_tables_to_drop, filtered_temp_name)
+    temp_tables_to_drop <- c(temp_tables_to_drop, spec$filtered_temp_name)
 
     # Long-format numeric query
-    long_sql <- build_long_select(tbl_concepts, tbl, variable_names,
-                                  window_start_point, cadence)
-    if (long_sql != "") {
+    if (spec$long_sql != "") {
       t0 <- Sys.time()
-      rendered <- render_and_translate(
-        long_sql, schema, age_qry, first_window, last_window,
-        dialect, start_date, end_date)
-      raw <- dbGetQuery(conn, rendered)
+      raw <- dbGetQuery(conn, spec$long_sql)
       elapsed <- round(difftime(Sys.time(), t0, units = "secs"), 1)
       if (!is.null(raw) && nrow(raw) > 0) {
         pivoted <- pivot_long_to_wide(as.data.table(raw), concept_map)
-        message("  ", vn$alias, "_long: ", nrow(raw), " -> ",
+        message("  ", spec$alias, "_long: ", nrow(raw), " -> ",
                 nrow(pivoted), " wide rows (", elapsed, "s)")
-        if (nrow(pivoted) > 0) physiology[[paste0(vn$alias, "_long")]] <- pivoted
+        if (nrow(pivoted) > 0) physiology[[paste0(spec$alias, "_long")]] <- pivoted
       } else {
-        message("  ", vn$alias, "_long: 0 rows (", elapsed, "s)")
+        message("  ", spec$alias, "_long: 0 rows (", elapsed, "s)")
       }
     }
 
     # Count query
-    count_sql <- build_count_select(tbl_concepts, tbl, variable_names,
-                                    window_start_point, cadence)
-    if (count_sql != "") {
+    if (spec$count_sql != "") {
       t0 <- Sys.time()
-      rendered <- render_and_translate(
-        count_sql, schema, age_qry, first_window, last_window,
-        dialect, start_date, end_date)
-      raw <- dbGetQuery(conn, rendered)
+      raw <- dbGetQuery(conn, spec$count_sql)
       elapsed <- round(difftime(Sys.time(), t0, units = "secs"), 1)
       n_rows <- if (is.null(raw)) 0 else nrow(raw)
-      message("  ", vn$alias, "_counts: ", n_rows, " rows (", elapsed, "s)")
-      if (n_rows > 0) physiology[[paste0(vn$alias, "_counts")]] <- as.data.table(raw)
+      message("  ", spec$alias, "_counts: ", n_rows, " rows (", elapsed, "s)")
+      if (n_rows > 0) physiology[[paste0(spec$alias, "_counts")]] <- as.data.table(raw)
     }
   }
 
-  # --- 5. Drug ---
-  drug_result <- build_drug_statements(concepts, variable_names,
-                                       window_start_point, cadence, dialect)
-  if (!is.null(drug_result)) {
+  # --- 5. Drug (per-batch statements only — ancestor_map already exists) ---
+  if (!is.null(drug_spec)) {
     t0 <- Sys.time()
-    for (stmt in drug_result$filtered_stmts) {
-      t_step <- Sys.time()
-      rendered <- render_and_translate(
-        stmt, schema, age_qry, first_window, last_window,
-        dialect, start_date, end_date)
-      dbExecute(conn, rendered)
-      # Log CREATE and ANALYZE steps (skip DROP which is instant)
-      if (grepl("^CREATE", stmt)) {
-        # Extract table name for logging
-        tbl_name <- sub("^CREATE TEMP TABLE (\\S+) AS.*", "\\1", stmt)
-        n <- dbGetQuery(conn, glue("SELECT COUNT(*) AS n FROM {tbl_name}"))$n
-        message("  drg setup ", tbl_name, ": ", n, " rows (",
-                round(difftime(Sys.time(), t_step, units = "secs"), 1), "s)")
-      }
-    }
-    temp_tables_to_drop <- c(temp_tables_to_drop,
-                             "drg_filtered_temp", "ancestor_map", "drg_tagged")
+    for (stmt in drug_spec$batch_stmts) dbExecute(conn, stmt)
+    temp_tables_to_drop <- c(temp_tables_to_drop, drug_spec$temp_tables)
 
-    t_agg <- Sys.time()
-    rendered <- render_and_translate(
-      drug_result$select_sql, schema, age_qry, first_window, last_window,
-      dialect, start_date, end_date)
-    raw <- dbGetQuery(conn, rendered)
-    elapsed_agg <- round(difftime(Sys.time(), t_agg, units = "secs"), 1)
-    elapsed_total <- round(difftime(Sys.time(), t0, units = "secs"), 1)
+    raw <- dbGetQuery(conn, drug_spec$select_sql)
+    elapsed <- round(difftime(Sys.time(), t0, units = "secs"), 1)
     n_rows <- if (is.null(raw)) 0 else nrow(raw)
-    message("  drg agg: ", n_rows, " rows (", elapsed_agg, "s)")
-    message("  drg total: ", elapsed_total, "s")
+    message("  drg: ", n_rows, " rows (", elapsed, "s)")
     if (n_rows > 0) physiology[["drg"]] <- as.data.table(raw)
   }
 
@@ -445,7 +519,7 @@ execute_batch <- function(conn, person_ids_batch,
     if (n_rows > 0) physiology[["gcs"]] <- as.data.table(raw)
   }
 
-  # --- 7. Drop per-table temp tables ---
+  # --- 7. Drop per-batch temp tables ---
   for (tbl in c(temp_tables_to_drop, "adm_multi_temp", "adm_details_temp")) {
     drop_temp_table(conn, tbl, dialect)
   }
@@ -497,7 +571,12 @@ get_score_variables <- function(conn, dialect, schema,
         start_date = start_date, end_date = end_date, dialect = dialect)
   }
 
-  # --- Shared components ---
+  # =====================================================================
+  # SETUP (once per call)
+  # =====================================================================
+  setup_start <- Sys.time()
+  message("Setting up queries...")
+
   age_qry <- age_query(age_method)
   pasted_visits_sql <- build_visit_sql(visit_mode, dialect,
                                        paste_gap_hours, ground_truth)
@@ -522,7 +601,7 @@ get_score_variables <- function(conn, dialect, schema,
     stop("Multiple additional_filter_variable_name for: ",
          paste(dup_filters$short_name, collapse = ", "))
 
-  # GCS as concept IDs
+  # GCS stored as concept IDs
   gcs_concepts <- concepts[
     concepts$short_name %in% c("gcs_eye", "gcs_motor", "gcs_verbal") &
       concepts$omop_variable == "value_as_concept_id" &
@@ -532,10 +611,33 @@ get_score_variables <- function(conn, dialect, schema,
         concepts$omop_variable == "value_as_concept_id" &
         !is.na(concepts$omop_variable)), ]
 
+  # --- Resolve string searches (once — queries concept table) ---
+  if (!dry_run) {
+    concepts <- resolve_string_searches(conn, concepts, schema, dialect)
+  }
+
+  # --- Build concept map for R-side pivoting ---
   concept_map <- build_concept_map(concepts)
 
-  # GCS query template — still uses CTE preamble since it has its own
-  # measurement logic, but now references person_batch for filtering.
+  # --- Build all SQL templates (once) ---
+  table_specs <- build_table_query_specs(
+    concepts, variable_names, window_start_point, cadence,
+    schema, age_qry, first_window, last_window,
+    dialect, start_date, end_date)
+
+  drug_spec <- build_drug_query_spec(
+    concepts, variable_names, window_start_point, cadence, dialect,
+    schema, age_qry, first_window, last_window, start_date, end_date)
+
+  # --- Create ancestor_map once (persists across batches) ---
+  if (!dry_run && !is.null(drug_spec) && length(drug_spec$ancestor_stmts) > 0) {
+    t0 <- Sys.time()
+    for (stmt in drug_spec$ancestor_stmts) dbExecute(conn, stmt)
+    message("  ancestor_map created (",
+            round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
+  }
+
+  # --- GCS template ---
   gcs_sql_template <- if (nrow(gcs_concepts) > 0) {
     read_file(system.file("gcs_if_stored_as_concept.sql",
                           package = "SeverityScoresOMOP")) %>%
@@ -549,26 +651,30 @@ get_score_variables <- function(conn, dialect, schema,
              end_date = single_quote(end_date))
   } else NULL
 
+  message("Setup completed in ",
+          round(difftime(Sys.time(), setup_start, units = "secs"), 1), "s")
+
   # --- Verbose ---
   if (verbose) {
-    message("=== Pasted Visits SQL ===\n", pasted_visits_sql)
-    message("=== Tables: ", paste(unique(concepts$table), collapse = ", "))
-    if (!is.null(gcs_sql_template))
-      message("=== GCS Query ===\n", gcs_sql_template)
+    message("=== Tables: ", paste(names(table_specs), collapse = ", "))
+    if (!is.null(drug_spec)) message("=== Drug query present")
+    if (!is.null(gcs_sql_template)) message("=== GCS query present")
   }
 
   # --- Dry run ---
   if (dry_run) {
     message("Dry run complete.")
     return(list(
-      pasted_visits_sql = pasted_visits_sql,
+      table_specs = table_specs,
+      drug_spec = drug_spec,
       gcs_sql_template = gcs_sql_template,
       concept_map = concept_map,
-      concepts = concepts,
-      variable_names = variable_names))
+      concepts = concepts))
   }
 
-  # --- Get person IDs ---
+  # =====================================================================
+  # GET PERSON IDS
+  # =====================================================================
   resolved_gt <- NULL
   if (visit_mode == "ground_truth") {
     resolved_gt <- resolve_ground_truth_ids(
@@ -584,7 +690,9 @@ get_score_variables <- function(conn, dialect, schema,
 
   id_batches <- split(person_ids, ceiling(seq_along(person_ids) / batch_size))
 
-  # --- Execute batches ---
+  # =====================================================================
+  # BATCH LOOP
+  # =====================================================================
   batch_admissions <- vector("list", length(id_batches))
   batch_physiology <- vector("list", length(id_batches))
 
@@ -596,19 +704,15 @@ get_score_variables <- function(conn, dialect, schema,
       conn = conn,
       person_ids_batch = id_batches[[i]],
       pasted_visits_sql = pasted_visits_sql,
-      concepts = concepts,
-      variable_names = variable_names,
-      window_start_point = window_start_point,
-      cadence = cadence,
-      dialect = dialect,
-      schema = schema,
-      age_qry = age_qry,
-      first_window = first_window,
-      last_window = last_window,
-      start_date = start_date,
-      end_date = end_date,
+      table_specs = table_specs,
+      drug_spec = drug_spec,
       gcs_sql_template = gcs_sql_template,
       concept_map = concept_map,
+      schema = schema,
+      age_qry = age_qry,
+      dialect = dialect,
+      start_date = start_date,
+      end_date = end_date,
       visit_mode = visit_mode,
       resolved_gt = resolved_gt)
 
@@ -619,10 +723,14 @@ get_score_variables <- function(conn, dialect, schema,
     message("Batch ", i, " completed in ", elapsed, " seconds")
   }
 
-  # --- Clean up ---
+  # =====================================================================
+  # CLEANUP AND MERGE
+  # =====================================================================
   drop_temp_table(conn, "person_batch", dialect)
+  if (!is.null(drug_spec)) {
+    drop_temp_table(conn, "ancestor_map", dialect)
+  }
 
-  # --- Combine batches ---
   admissions <- rbindlist(batch_admissions, use.names = TRUE, fill = TRUE)
   batch_admissions <- NULL
 
@@ -637,7 +745,6 @@ get_score_variables <- function(conn, dialect, schema,
   }
   batch_physiology <- NULL
 
-  # --- Merge ---
   data <- merge_admissions_and_physiology(admissions, physiology_dfs)
   admissions <- NULL
   physiology_dfs <- NULL
