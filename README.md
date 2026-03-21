@@ -58,7 +58,7 @@ omop_conn <- omop_connect(
 ```r
 data <- get_score_variables(
   omop_conn,
-  sql_dialect = "your_sql_dialect",
+  dialect = "your_sql_dialect",
   schema = "your_schema_name",
   start_date = "2022-07-01",
   end_date = "2022-07-31",
@@ -250,7 +250,7 @@ This column controls how each variable is extracted and represented in the outpu
     - `Visit Occurrence`: Represents hospital stays.
     - `Visit Detail`: Represents ICU/ward stays or bed/room moves.
 - ICU stays must have `visit_detail_concept_id` set to `581379` ("Inpatient Critical Care Facility") or `32037` ("Intensive Care"). Not applicable in ground truth mode.
-- Each `Visit Detail` row must have `visit_occurrence_id` filled in (not required in ground truth mode if the joining schema provides it).
+- Each `Visit Detail` row should ideally have `visit_occurrence_id` filled in. If it is NULL, the code falls back to matching by datetime overlap with `visit_occurrence` (not required in ground truth mode if the joining schema provides it).
 - ICU stays in the same hospital visit and separated by less than `paste_gap_hours` (default 6) hours are merged into a single stay in paste mode.
 
 ### Ground Truth Mode Requirements

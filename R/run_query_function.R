@@ -455,6 +455,32 @@ get_score_variables <- function(conn, dialect, schema,
         render(person_ids = glue_collapse(person_ids_batch, sep = ", "))
     }
 
+    # Create a temp table with the batch person_ids and ANALYZE it so the
+    # planner has accurate row count statistics. This lets Postgres use the
+    # person_id index on large clinical tables rather than falling back to
+    # a concept_id scan. The _filtered CTEs in the main query join to this
+    # table instead of an inline subquery.
+    #
+    # DROP first so re-running a batch after an error is safe.
+    # SqlRender translates CREATE TEMP TABLE for SQL Server.
+    # SQL Server requires dialect-specific DROP syntax.
+    drop_sql <- if (tolower(dialect) == "sql server") {
+      "IF OBJECT_ID('tempdb..#person_batch') IS NOT NULL DROP TABLE #person_batch"
+    } else {
+      "DROP TABLE IF EXISTS person_batch"
+    }
+    dbExecute(conn, drop_sql)
+    dbExecute(conn, translate("CREATE TEMP TABLE person_batch (person_id INT)",
+                              targetDialect = tolower(dialect)))
+    id_rows <- glue_collapse(glue("({person_ids_batch})"), sep = ", ")
+    dbExecute(conn, glue("INSERT INTO person_batch VALUES {id_rows}"))
+    analyze_sql <- if (tolower(dialect) == "sql server") {
+      "UPDATE STATISTICS person_batch"
+    } else {
+      "ANALYZE person_batch"
+    }
+    dbExecute(conn, analyze_sql)
+
     # Timing
     start_time <- Sys.time()
 
