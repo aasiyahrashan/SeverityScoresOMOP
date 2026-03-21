@@ -1,125 +1,168 @@
-with_query <- function(concepts, table_name, variable_names,
-                       window_start_point, cadence){
-  # Constructs two CTEs per OMOP table (except drugs, handled separately):
-  #   {alias}_filtered: filters the clinical table by person_batch and concept,
-  #                     materialising a small intermediate result on Postgres 9.
-  #   {alias}:          joins the filtered rows to admissions and aggregates.
-  #
-  # person_batch filtering uses IN (SELECT ...) rather than INNER JOIN.
-  # On Postgres 9, INNER JOIN to a temp table pins the planner to the
-  # person_id index. IN (subquery) lets the planner choose between the
-  # person_id and concept_id indexes — typically 10-20x faster on tables
-  # like measurement where the concept_id index is more selective.
+# =============================================================================
+# construct_with_statement.R
+#
+# Builds standalone SQL queries for each OMOP clinical table. Each query
+# returns physiology data for one table as a self-contained result set.
+# R merges everything together after execution.
+#
+# Architecture:
+#   - Each non-Drug table produces up to two queries:
+#       1. A long-format query for value_as_number variables (if any)
+#       2. A count query for non-numeric variables (if any)
+#   - The Drug table produces one count query (uses generate_series)
+#   - All queries share the same CTE preamble (pasted visits) and reuse
+#     the person_batch temp table.
+#
+# Why separate queries instead of one big WITH block:
+#   - Postgres 9 CTEs are optimization fences — chaining many CTEs causes
+#     the planner to hang on CTE-to-CTE joins, especially with OR conditions.
+#   - Each query is simple and focused, making debugging and profiling easy.
+#   - R does the joining (instant on aggregated data), so there's no penalty.
+# =============================================================================
 
-  # Variable names, and return empty string if no concepts required
-  concepts <- concepts %>%
-    filter(table == table_name) %>%
-    # Visit detail can only be queried for the emergency admission variable
-    filter(table != "Visit Detail" |
-             (table == "Visit Detail" & short_name == "emergency_admission")) %>%
-    # Drugs are handled separately
-    filter(table != "Drug")
 
-  variable_names <- variable_names %>%
+#' Build a _filtered CTE string for a non-Drug OMOP table.
+#'
+#' Materialises a small intermediate result by filtering the clinical table
+#' by person_batch and concept IDs. Uses IN (SELECT ...) rather than
+#' INNER JOIN for person filtering — on Postgres 9, this lets the planner
+#' choose between the person_id and concept_id indexes.
+#'
+#' @param table_concepts Concepts dataframe, already filtered to this table.
+#' @param table_name OMOP table name (e.g. "Measurement").
+#' @param variable_names The full variable_names dataframe.
+#'
+#' @return A SQL CTE string starting with ", {alias}_filtered AS (...)".
+#' @keywords internal
+filtered_cte <- function(table_concepts, table_name, variable_names) {
+
+  vn <- variable_names %>%
     filter(table == table_name)
 
-  if (nrow(concepts) == 0){
-    return("")
-  }
-
-  # Build datetime expressions.
-  # start_datetime_var = the datetime column (e.g. measurement_datetime)
-  # start_date_var     = the date column     (e.g. measurement_date)
-  # Prefer the datetime column; fall back to the date column with a cast.
+  # Build datetime expressions
   datetime_expr <- glue(
-    "COALESCE(t.{variable_names$start_datetime_var}, CAST(t.{variable_names$start_date_var} AS TIMESTAMP))")
+    "COALESCE(t.{vn$start_datetime_var}, ",
+    "CAST(t.{vn$start_date_var} AS TIMESTAMP))")
   date_expr <- glue(
-    "COALESCE(CAST(t.{variable_names$start_datetime_var} AS DATE), t.{variable_names$start_date_var})")
+    "COALESCE(CAST(t.{vn$start_datetime_var} AS DATE), ",
+    "t.{vn$start_date_var})")
 
-  # Windowing query. Visit detail window time is always 0, since it's the beginning of the admission.
-  # Two versions:
-  #   window               — uses raw column expressions, for reference
-  #   window_from_filtered — uses the pre-computed table_date/table_datetime columns from
-  #                          _filtered, avoiding redundant COALESCE/CAST in the aggregation CTE.
-  if(table_name != "Visit Detail"){
-    window <- window_query(window_start_point, datetime_expr, date_expr, cadence)
-    window_from_filtered <- window_query(window_start_point, "t.table_datetime", "t.table_date", cadence)
-  } else {
-    window <- 0
-    window_from_filtered <- 0
-  }
+  # Where clause
+  where_expression <- where_clause(table_concepts, variable_names, table_name)
 
-  # Variable query
-  variables <- variables_query(concepts,
-                               variable_names$concept_id_var,
-                               variable_names$id_var)
-
-  # Where query
-  where_expression <- where_clause(concepts, variable_names, table_name)
-
-  # Units of measure join (only for tables with numeric values).
-  units_of_measure_join <- units_of_measure_query(table_name)
-
-  # Only join the concept table in _filtered if string search variables are
-  # present for this table — concept_name/concept_code columns are only needed
-  # in that case. For pure concept_id queries the join is unnecessary overhead.
-  needs_concept_join <- any(concepts$omop_variable %in% c("concept_name", "concept_code"),
-                            na.rm = TRUE)
+  # Concept join only for string search variables
+  needs_concept_join <- any(
+    table_concepts$omop_variable %in% c("concept_name", "concept_code"),
+    na.rm = TRUE)
   concept_join <- if (needs_concept_join) {
-    glue("INNER JOIN @schema.concept c\n  ON c.concept_id = t.{variable_names$concept_id_var}")
+    glue("INNER JOIN @schema.concept c\n",
+         "  ON c.concept_id = t.{vn$concept_id_var}")
   } else {
     ""
   }
 
-  # Build explicit column list for _filtered instead of t.* to reduce
-  # CTE materialization width. Only select columns the aggregation CTE needs.
-  # NOTE: if you add a new omop_variable type that references a column not
-  # listed here, you must add it to this list or the query will fail.
-  has_numeric <- any(concepts$omop_variable == "value_as_number", na.rm = TRUE)
-  has_value_as_concept <- any(concepts$omop_variable == "value_as_concept_id", na.rm = TRUE)
-  additional_cols <- unique(concepts$additional_filter_variable_name[
-    !is.na(concepts$additional_filter_variable_name)])
+  # Explicit column list — only what downstream CTEs need
+  has_numeric <- any(table_concepts$omop_variable == "value_as_number",
+                     na.rm = TRUE)
+  has_value_as_concept <- any(
+    table_concepts$omop_variable == "value_as_concept_id", na.rm = TRUE)
+  additional_cols <- unique(table_concepts$additional_filter_variable_name[
+    !is.na(table_concepts$additional_filter_variable_name)])
 
-  filtered_cols <- c(
+  cols <- c(
     "t.person_id",
     "t.visit_occurrence_id",
-    glue("t.{variable_names$concept_id_var}"),
-    glue("t.{variable_names$id_var}")
+    glue("t.{vn$concept_id_var}"),
+    glue("t.{vn$id_var}")
   )
   if (has_numeric) {
-    filtered_cols <- c(filtered_cols, "t.value_as_number", "t.unit_concept_id")
+    cols <- c(cols, "t.value_as_number", "t.unit_concept_id")
   }
   if (has_value_as_concept) {
-    filtered_cols <- c(filtered_cols, "t.value_as_concept_id")
+    cols <- c(cols, "t.value_as_concept_id")
   }
   if (length(additional_cols) > 0) {
-    filtered_cols <- c(filtered_cols, glue("t.{additional_cols}"))
+    cols <- c(cols, glue("t.{additional_cols}"))
   }
-  filtered_select <- glue_collapse(unique(filtered_cols), sep = ",\n      ")
+  select_list <- glue_collapse(unique(cols), sep = ",\n      ")
 
-  with_query <-
-    glue("
-    -- {table_name}: filter by person and concept to materialise a small intermediate result
-    , {variable_names$alias}_filtered AS (
+  glue("
+    , {vn$alias}_filtered AS (
     SELECT
-      {filtered_select},
+      {select_list},
       {date_expr} AS table_date,
       {datetime_expr} AS table_datetime
       {if (needs_concept_join) ', c.concept_name, c.concept_code' else ''}
-    FROM @schema.{variable_names$db_table_name} t
+    FROM @schema.{vn$db_table_name} t
     {concept_join}
     WHERE t.person_id IN (SELECT person_id FROM person_batch)
-      AND ({where_expression}))
+      AND ({where_expression}))")
+}
 
-    -- {table_name}: join filtered rows to admissions and aggregate
-    , {variable_names$alias} AS (
+
+#' Build a complete long-format query for value_as_number variables in one table.
+#'
+#' Returns a self-contained SQL query (pasted visits + _filtered + _long + SELECT).
+#' The result has columns: person_id, icu_admission_datetime, time_in_icu,
+#' concept_id, min_val, max_val, unit_name, plus any additional filter columns.
+#'
+#' @param table_concepts Concepts for this table, pre-filtered to value_as_number.
+#' @param table_name OMOP table name.
+#' @param variable_names Variable names dataframe.
+#' @param pasted_visits_sql Pre-rendered pasted visits SQL.
+#' @param window_start_point Windowing mode.
+#' @param cadence Cadence in hours.
+#'
+#' @return A SQL string for the complete long-format query, or "" if no
+#'   numeric variables exist.
+#' @keywords internal
+build_long_query <- function(table_concepts, table_name, variable_names,
+                             pasted_visits_sql, window_start_point, cadence) {
+
+  numeric_concepts <- table_concepts %>%
+    filter(omop_variable == "value_as_number")
+
+  if (nrow(numeric_concepts) == 0) return("")
+
+  vn <- variable_names %>% filter(table == table_name)
+  alias_long <- paste0(vn$alias, "_long")
+
+  # Windowing
+  if (table_name != "Visit Detail") {
+    window_expr <- window_query(window_start_point,
+                                "t.table_datetime", "t.table_date",
+                                cadence)
+  } else {
+    window_expr <- 0
+  }
+
+  # Additional filter columns
+  has_additional_filter <- any(
+    !is.na(numeric_concepts$additional_filter_variable_name))
+  additional_select <- ""
+  additional_group_by <- ""
+  if (has_additional_filter) {
+    filter_cols <- unique(numeric_concepts$additional_filter_variable_name[
+      !is.na(numeric_concepts$additional_filter_variable_name)])
+    additional_select <- paste0(",\n      t.", filter_cols, collapse = "")
+    additional_group_by <- paste0(",\n      t.", filter_cols, collapse = "")
+  }
+
+  # Build _filtered CTE (only includes numeric concepts for this query)
+  filt <- filtered_cte(numeric_concepts, table_name, variable_names)
+
+  long_cte <- glue("
+    , {alias_long} AS (
     SELECT
-       t.person_id,
-       adm.icu_admission_datetime,
-       {window_from_filtered} AS time_in_icu
-       {variables}
+      t.person_id,
+      adm.icu_admission_datetime,
+      {window_expr} AS time_in_icu,
+      t.{vn$concept_id_var} AS concept_id,
+      MIN(t.value_as_number) AS min_val,
+      MAX(t.value_as_number) AS max_val,
+      MIN(c_unit.concept_name) AS unit_name{additional_select}
     FROM icu_admission_details_multiple_visits adm
-    INNER JOIN {variable_names$alias}_filtered t
+    INNER JOIN {vn$alias}_filtered t
       ON adm.person_id = t.person_id
       AND (
          adm.visit_occurrence_id = t.visit_occurrence_id
@@ -127,56 +170,129 @@ with_query <- function(concepts, table_name, variable_names,
              AND t.table_datetime >= adm.hospital_admission_datetime
              AND t.table_datetime <  adm.hospital_discharge_datetime)
         )
-    {units_of_measure_join}
-    WHERE {window_from_filtered} >= @first_window
-      AND {window_from_filtered} <= @last_window
+    LEFT JOIN @schema.concept c_unit
+      ON t.unit_concept_id = c_unit.concept_id
+      AND t.unit_concept_id IS NOT NULL
+    WHERE {window_expr} >= @first_window
+      AND {window_expr} <= @last_window
+      AND t.value_as_number IS NOT NULL
     GROUP BY
       t.person_id,
       adm.icu_admission_datetime,
-      {window_from_filtered}) ")
-  with_query
+      {window_expr},
+      t.{vn$concept_id_var}{additional_group_by})")
+
+  glue("{pasted_visits_sql}\n{filt}\n{long_cte}\nSELECT * FROM {alias_long};")
 }
 
 
-drug_with_query <- function(concepts, variable_names,
-                            window_start_point, cadence,
-                            dialect){
+#' Build a complete count query for non-numeric variables in one table.
+#'
+#' Returns a self-contained SQL query (pasted visits + _filtered + _counts + SELECT).
+#' The result has columns: person_id, icu_admission_datetime, time_in_icu,
+#' plus count_{short_name} columns.
+#'
+#' @param table_concepts Concepts for this table, pre-filtered to non-numeric types.
+#' @param table_name OMOP table name.
+#' @param variable_names Variable names dataframe.
+#' @param pasted_visits_sql Pre-rendered pasted visits SQL.
+#' @param window_start_point Windowing mode.
+#' @param cadence Cadence in hours.
+#'
+#' @return A SQL string for the complete count query, or "" if no count
+#'   variables exist.
+#' @keywords internal
+build_count_query <- function(table_concepts, table_name, variable_names,
+                              pasted_visits_sql, window_start_point, cadence) {
 
-  # The drug table needs generate_series / OUTER APPLY to expand date ranges
-  # into individual time windows. It keeps a _filtered CTE because the lateral
-  # join needs a pre-filtered set to expand.
+  count_concepts <- table_concepts %>%
+    filter(omop_variable != "value_as_number" | is.na(omop_variable))
 
-  concepts <- concepts %>%
-    filter(table == "Drug")
-  variable_names <- variable_names %>%
-    filter(table == "Drug")
+  if (nrow(count_concepts) == 0) return("")
 
-  if (nrow(concepts) == 0){
-    return("")
+  vn <- variable_names %>% filter(table == table_name)
+  alias_counts <- paste0(vn$alias, "_counts")
+
+  # Windowing
+  if (table_name != "Visit Detail") {
+    window_expr <- window_query(window_start_point,
+                                "t.table_datetime", "t.table_date",
+                                cadence)
+  } else {
+    window_expr <- 0
   }
 
-  # Window query
-  window_start <- window_query(window_start_point,
-                               "i.table_datetime",
-                               "i.table_date",
-                               cadence)
-  window_end <- window_query(window_start_point,
-                             "i.table_end_datetime",
-                             "i.table_end_date",
-                             cadence)
+  # CASE WHEN expressions
+  variables <- variables_query(count_concepts,
+                               vn$concept_id_var,
+                               vn$id_var)
 
-  # Variables query
-  variables <- variables_query(concepts,
-                               variable_names$concept_id_var,
-                               variable_names$id_var)
-  where_expression <- where_clause(concepts, variable_names, "Drug")
+  # Build _filtered CTE (only includes count concepts for this query)
+  filt <- filtered_cte(count_concepts, table_name, variable_names)
+
+  count_cte <- glue("
+    , {alias_counts} AS (
+    SELECT
+       t.person_id,
+       adm.icu_admission_datetime,
+       {window_expr} AS time_in_icu
+       {variables}
+    FROM icu_admission_details_multiple_visits adm
+    INNER JOIN {vn$alias}_filtered t
+      ON adm.person_id = t.person_id
+      AND (
+         adm.visit_occurrence_id = t.visit_occurrence_id
+         OR (t.visit_occurrence_id IS NULL
+             AND t.table_datetime >= adm.hospital_admission_datetime
+             AND t.table_datetime <  adm.hospital_discharge_datetime)
+        )
+    WHERE {window_expr} >= @first_window
+      AND {window_expr} <= @last_window
+    GROUP BY
+      t.person_id,
+      adm.icu_admission_datetime,
+      {window_expr})")
+
+  glue("{pasted_visits_sql}\n{filt}\n{count_cte}\nSELECT * FROM {alias_counts};")
+}
+
+
+#' Build the Drug table query.
+#'
+#' The Drug table uses generate_series/OUTER APPLY to expand date ranges
+#' into time windows. Returns a self-contained query.
+#'
+#' @param concepts Full concepts dataframe.
+#' @param variable_names Variable names dataframe.
+#' @param pasted_visits_sql Pre-rendered pasted visits SQL.
+#' @param window_start_point Windowing mode.
+#' @param cadence Cadence in hours.
+#' @param dialect SQL dialect ("postgresql" or "sql server").
+#'
+#' @return SQL string for the complete drug query, or "" if no Drug concepts.
+#' @keywords internal
+build_drug_query <- function(concepts, variable_names, pasted_visits_sql,
+                             window_start_point, cadence, dialect) {
+
+  drug_concepts <- concepts %>% filter(table == "Drug")
+  if (nrow(drug_concepts) == 0) return("")
+
+  vn <- variable_names %>% filter(table == "Drug")
+
+  # Window queries
+  window_start <- window_query(window_start_point,
+                               "i.table_datetime", "i.table_date", cadence)
+  window_end <- window_query(window_start_point,
+                             "i.table_end_datetime", "i.table_end_date", cadence)
+
+  # CASE WHEN expressions
+  variables <- variables_query(drug_concepts, vn$concept_id_var, vn$id_var)
+  where_expression <- where_clause(drug_concepts, variable_names, "Drug")
   drug_join <- translate_drug_join(dialect)
 
-  drug_with_query <-
-    glue("
-    -- Drug: filter by person and concept
-    -- Uses IN (subquery) instead of JOIN to person_batch so the planner
-    -- can choose the concept_id index on large tables (Postgres 9 quirk).
+  drug_sql <- glue("
+    {pasted_visits_sql}
+
     , drg_filtered AS (
     SELECT
     t.person_id,
@@ -185,17 +301,16 @@ drug_with_query <- function(concepts, variable_names,
     t.drug_concept_id,
     c.concept_name,
     c.concept_code,
-    COALESCE(CAST(t.{variable_names$start_datetime_var} AS DATE), t.{variable_names$start_date_var}) AS table_date,
-    COALESCE(t.{variable_names$start_datetime_var}, CAST(t.{variable_names$start_date_var} AS TIMESTAMP)) AS table_datetime,
-    COALESCE(CAST(t.{variable_names$end_datetime_var} AS DATE), t.{variable_names$end_date_var}) AS table_end_date,
-    COALESCE(t.{variable_names$end_datetime_var}, CAST(t.{variable_names$end_date_var} AS TIMESTAMP)) AS table_end_datetime
+    COALESCE(CAST(t.{vn$start_datetime_var} AS DATE), t.{vn$start_date_var}) AS table_date,
+    COALESCE(t.{vn$start_datetime_var}, CAST(t.{vn$start_date_var} AS TIMESTAMP)) AS table_datetime,
+    COALESCE(CAST(t.{vn$end_datetime_var} AS DATE), t.{vn$end_date_var}) AS table_end_date,
+    COALESCE(t.{vn$end_datetime_var}, CAST(t.{vn$end_date_var} AS TIMESTAMP)) AS table_end_datetime
     FROM @schema.drug_exposure t
     INNER JOIN @schema.concept c
       ON c.concept_id = t.drug_concept_id
     WHERE t.person_id IN (SELECT person_id FROM person_batch)
       AND {where_expression} )
 
-    -- Drug: join to admissions, expand date ranges, aggregate
     , drg AS (
       SELECT
           t.person_id
@@ -226,37 +341,9 @@ drug_with_query <- function(concepts, variable_names,
       GROUP BY
       t.person_id
       ,t.icu_admission_datetime
-      ,gs.time_in_icu)")
-  drug_with_query
-}
+      ,gs.time_in_icu)
 
+    SELECT * FROM drg;")
 
-#' Build a UNION spine of all (person_id, icu_admission_datetime, time_in_icu)
-#' from every table CTE. Replaces the old FULL JOIN chain with COALESCE keys.
-#' UNION (not UNION ALL) deduplicates, so a patient-day present in multiple
-#' tables appears once in the spine — no need for DISTINCT in each branch.
-#'
-#' @param aliases Character vector of CTE alias names (e.g. c("m", "o", "drg"))
-#' @return A SQL string defining the spine CTE.
-spine_query <- function(aliases) {
-  union_parts <- glue(
-    "SELECT person_id, icu_admission_datetime, time_in_icu FROM {aliases}")
-  glue(", spine AS (\n    ",
-       glue_collapse(union_parts, sep = "\n    UNION\n    "),
-       "\n  )")
-}
-
-
-#' Build LEFT JOINs from the spine to each table CTE.
-#' Each join is on plain columns (no COALESCE), so the DB can use indexes.
-#'
-#' @param aliases Character vector of CTE alias names.
-#' @return A SQL string with FROM spine + LEFT JOIN clauses.
-spine_join_query <- function(aliases) {
-  joins <- glue("
-    LEFT JOIN {aliases}
-      ON spine.person_id = {aliases}.person_id
-      AND spine.icu_admission_datetime = {aliases}.icu_admission_datetime
-      AND spine.time_in_icu = {aliases}.time_in_icu")
-  glue("FROM spine\n", glue_collapse(joins, sep = "\n"))
+  drug_sql
 }
