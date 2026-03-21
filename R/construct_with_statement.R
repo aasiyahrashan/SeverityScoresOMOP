@@ -75,34 +75,7 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
                           "{glue_collapse(anc_ids, sep = ', ')}))"))
   }
 
-  # String search filter (requires concept join)
-  if (has_string_search) {
-    str_concepts <- table_concepts[
-      table_concepts$omop_variable %in% c("concept_name", "concept_code") &
-        !is.na(table_concepts$omop_variable), ]
-    str_exprs <- str_concepts %>%
-      distinct(omop_variable, concept_id) %>%
-      reframe(expr = glue(
-        "LOWER(c_str.{omop_variable}) LIKE '%{tolower(concept_id)}%'")) %>%
-      pull(expr)
-    expressions <- c(expressions, str_exprs)
-  }
-
-  if (length(expressions) == 0) {
-    where_expr <- "false"
-  } else {
-    where_expr <- paste0("(", paste(expressions, collapse = " OR "), ")")
-  }
-
-  # Concept join for string search (only when needed)
-  string_join <- ""
-  if (has_string_search) {
-    string_join <- paste0(
-      "\n    INNER JOIN @schema.concept c_str",
-      "\n      ON c_str.concept_id = t.", vn$concept_id_var)
-  }
-
-  # Column list
+  # --- Column list and unit join (shared by both paths) ---
   has_numeric <- any(table_concepts$omop_variable == "value_as_number", na.rm = TRUE)
   has_val_concept <- any(table_concepts$omop_variable == "value_as_concept_id",
                          na.rm = TRUE)
@@ -116,7 +89,6 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
   if (length(extra_cols) > 0) cols <- c(cols, glue("t.{extra_cols}"))
   select_list <- glue_collapse(unique(cols), sep = ",\n      ")
 
-  # Pre-join unit names for numeric variables (LEFT JOIN, not INNER JOIN)
   unit_join <- ""
   unit_select <- ""
   if (has_numeric) {
@@ -127,19 +99,83 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
     unit_select <- ",\n      c_unit.concept_name AS unit_name"
   }
 
-  # Include concept_name/concept_code when string search variables exist
-  string_select <- ""
-  if (has_string_search) {
-    string_select <- ",\n      c_str.concept_name, c_str.concept_code"
-  }
+  # --- Build the CREATE TEMP TABLE statement ---
+  # Two strategies depending on whether string search variables exist:
+  #
+  # Without string search: single SELECT with concept_id IN (...) filter.
+  #   Fast — uses the concept_id index directly.
+  #
+  # With string search: UNION of two SELECTs:
+  #   1. Concept_id filter (no concept join, fast, covers most variables)
+  #   2. String search with concept join (matches few rows, but needs the join)
+  # This avoids forcing the concept join on all 1B+ measurement rows.
 
-  create_sql <- glue(
-    "CREATE TEMP TABLE {temp_name} AS\n",
-    "SELECT\n",
-    "      {select_list}{date_select}{unit_select}{string_select}\n",
-    "    FROM @schema.{vn$db_table_name} t{unit_join}{string_join}\n",
-    "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
-    "      AND {where_expr}")
+  if (!has_string_search) {
+    # Simple case: no string search
+    if (length(expressions) == 0) {
+      where_expr <- "false"
+    } else {
+      where_expr <- paste0("(", paste(expressions, collapse = " OR "), ")")
+    }
+
+    create_sql <- glue(
+      "CREATE TEMP TABLE {temp_name} AS\n",
+      "SELECT\n",
+      "      {select_list}{date_select}{unit_select}\n",
+      "    FROM @schema.{vn$db_table_name} t{unit_join}\n",
+      "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
+      "      AND {where_expr}")
+
+  } else {
+    # String search case: UNION two queries
+
+    # Part 1: concept_id filter (no concept join)
+    if (length(expressions) > 0) {
+      where_expr_ids <- paste0("(", paste(expressions, collapse = " OR "), ")")
+    } else {
+      where_expr_ids <- "false"
+    }
+
+    # For the string search part, we need concept_name/concept_code columns.
+    # For the concept_id part, those columns don't exist — use NULL placeholders
+    # so the UNION column lists match.
+    select_part1 <- glue(
+      "SELECT\n",
+      "      {select_list}{date_select}{unit_select},\n",
+      "      NULL::text AS concept_name, NULL::text AS concept_code\n",
+      "    FROM @schema.{vn$db_table_name} t{unit_join}\n",
+      "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
+      "      AND {where_expr_ids}")
+
+    # Part 2: string search with concept join (small result set)
+    str_concepts <- table_concepts[
+      table_concepts$omop_variable %in% c("concept_name", "concept_code") &
+        !is.na(table_concepts$omop_variable), ]
+    str_exprs <- str_concepts %>%
+      distinct(omop_variable, concept_id) %>%
+      reframe(expr = glue(
+        "LOWER(c_str.{omop_variable}) LIKE '%{tolower(concept_id)}%'")) %>%
+      pull(expr)
+    where_expr_str <- paste0("(", paste(str_exprs, collapse = " OR "), ")")
+
+    str_join <- paste0(
+      "\n    INNER JOIN @schema.concept c_str",
+      "\n      ON c_str.concept_id = t.", vn$concept_id_var)
+
+    select_part2 <- glue(
+      "SELECT\n",
+      "      {select_list}{date_select}{unit_select},\n",
+      "      c_str.concept_name, c_str.concept_code\n",
+      "    FROM @schema.{vn$db_table_name} t{unit_join}{str_join}\n",
+      "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
+      "      AND {where_expr_str}")
+
+    create_sql <- glue(
+      "CREATE TEMP TABLE {temp_name} AS\n",
+      "{select_part1}\n",
+      "UNION ALL\n",
+      "{select_part2}")
+  }
 
   c(glue("DROP TABLE IF EXISTS {temp_name}"),
     create_sql,
