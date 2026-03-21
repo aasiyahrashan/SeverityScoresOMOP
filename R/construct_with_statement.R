@@ -1,27 +1,29 @@
 # =============================================================================
 # construct_with_statement.R
 #
-# Builds SQL statements that operate on pre-materialised temp tables:
-#   - person_batch (patient IDs for this batch)
-#   - adm_multi_temp (icu_admission_details_multiple_visits)
+# Builds SQL for per-table physiology extraction. All queries reference
+# pre-materialised temp tables (person_batch, adm_multi_temp) — no CTEs
+# for visit pasting.
 #
-# Every function returns a simple query — no CTE preambles, no pasted visits.
-# The temp tables are created once per batch in run_query_function.R.
+# Key design: the _filtered temp table does NOT join the concept table.
+# It only filters by concept_id IN (...) and person_batch. The concept
+# table join (for unit names or string searches) happens in the aggregation
+# step on the much smaller filtered dataset.
 # =============================================================================
 
 
-#' Build a CREATE TEMP TABLE statement for the filtered clinical data.
+#' Build statements to create a filtered temp table for one OMOP table.
 #'
-#' Materialises filtered rows from one OMOP clinical table into a temp table.
-#' Filters by person_batch (IN subquery) and concept IDs. On Postgres 9,
-#' IN (subquery) lets the planner choose between person_id and concept_id
-#' indexes — typically 10-20x faster than JOIN on large tables.
+#' Filters the clinical table by person_batch (IN subquery) and concept IDs.
+#' Does NOT join the concept table — that happens in the aggregation step.
+#' Pre-joins unit names (LEFT JOIN concept on unit_concept_id) for tables
+#' with numeric variables, since this is needed by the long-format aggregation.
 #'
 #' @param table_concepts Concepts dataframe, pre-filtered to this table.
 #' @param table_name OMOP table name.
 #' @param variable_names Variable names dataframe.
 #'
-#' @return A character vector of SQL statements: CREATE TEMP TABLE, ANALYZE.
+#' @return Character vector: DROP, CREATE TEMP TABLE, ANALYZE statements.
 #' @importFrom glue glue glue_collapse
 #' @keywords internal
 build_filtered_temp <- function(table_concepts, table_name, variable_names) {
@@ -31,7 +33,6 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
 
   # Visit Detail has no datetime columns
   has_dates <- !is.na(vn$start_datetime_var) && !is.na(vn$start_date_var)
-
   if (has_dates) {
     datetime_expr <- glue(
       "COALESCE(t.{vn$start_datetime_var}, ",
@@ -39,44 +40,106 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
     date_expr <- glue(
       "COALESCE(CAST(t.{vn$start_datetime_var} AS DATE), ",
       "t.{vn$start_date_var})")
-    date_select <- glue(",\n      {date_expr} AS table_date,\n      {datetime_expr} AS table_datetime")
+    date_select <- glue(
+      ",\n      {date_expr} AS table_date,",
+      "\n      {datetime_expr} AS table_datetime")
   } else {
     date_select <- ""
   }
 
-  where_expr <- where_clause(table_concepts, variable_names, table_name)
+  # WHERE clause: concept_id filter + optional string search.
+  # String search (concept_name LIKE ...) requires joining the concept table.
+  # We only add that join when string search variables exist for this table.
+  has_string_search <- any(table_concepts$omop_variable %in%
+                             c("concept_name", "concept_code"), na.rm = TRUE)
 
-  needs_concept_join <- any(
-    table_concepts$omop_variable %in% c("concept_name", "concept_code"),
-    na.rm = TRUE)
-  concept_join <- if (needs_concept_join) {
-    glue("INNER JOIN @schema.concept c ON c.concept_id = t.{vn$concept_id_var}")
-  } else ""
+  # Concept_id-based filter (fast, uses index)
+  id_concepts <- table_concepts[
+    !(table_concepts$omop_variable %in% c("concept_name", "concept_code")) |
+      is.na(table_concepts$omop_variable), ]
+  ancestor_concepts <- table_concepts[
+    table_concepts$omop_variable == "ancestor_concept_id" &
+      !is.na(table_concepts$omop_variable), ]
 
-  # Minimal column list
+  expressions <- character(0)
+  if (nrow(id_concepts) > 0) {
+    ids <- unique(id_concepts$concept_id)
+    expressions <- c(expressions,
+      glue("{vn$concept_id_var} IN ({glue_collapse(ids, sep = ', ')})"))
+  }
+  if (nrow(ancestor_concepts) > 0) {
+    anc_ids <- unique(ancestor_concepts$concept_id)
+    expressions <- c(expressions,
+      glue("{vn$concept_id_var} IN (SELECT descendant_concept_id FROM ",
+           "@schema.concept_ancestor WHERE ancestor_concept_id IN (",
+           "{glue_collapse(anc_ids, sep = ', ')}))"))
+  }
+
+  # String search filter (requires concept join)
+  if (has_string_search) {
+    str_concepts <- table_concepts[
+      table_concepts$omop_variable %in% c("concept_name", "concept_code") &
+        !is.na(table_concepts$omop_variable), ]
+    str_exprs <- str_concepts %>%
+      distinct(omop_variable, concept_id) %>%
+      reframe(expr = glue(
+        "LOWER(c_str.{omop_variable}) LIKE '%{tolower(concept_id)}%'")) %>%
+      pull(expr)
+    expressions <- c(expressions, str_exprs)
+  }
+
+  if (length(expressions) == 0) {
+    where_expr <- "false"
+  } else {
+    where_expr <- paste0("(", paste(expressions, collapse = " OR "), ")")
+  }
+
+  # Concept join for string search (only when needed)
+  string_join <- ""
+  if (has_string_search) {
+    string_join <- glue(
+      "\n    INNER JOIN @schema.concept c_str",
+      "\n      ON c_str.concept_id = t.{vn$concept_id_var}")
+  }
+
+  # Column list
   has_numeric <- any(table_concepts$omop_variable == "value_as_number", na.rm = TRUE)
-  has_val_concept <- any(table_concepts$omop_variable == "value_as_concept_id", na.rm = TRUE)
+  has_val_concept <- any(table_concepts$omop_variable == "value_as_concept_id",
+                         na.rm = TRUE)
   extra_cols <- unique(table_concepts$additional_filter_variable_name[
     !is.na(table_concepts$additional_filter_variable_name)])
 
   cols <- c("t.person_id", "t.visit_occurrence_id",
             glue("t.{vn$concept_id_var}"), glue("t.{vn$id_var}"))
-  if (has_numeric)     cols <- c(cols, "t.value_as_number", "t.unit_concept_id")
+  if (has_numeric) cols <- c(cols, "t.value_as_number", "t.unit_concept_id")
   if (has_val_concept) cols <- c(cols, "t.value_as_concept_id")
   if (length(extra_cols) > 0) cols <- c(cols, glue("t.{extra_cols}"))
-
   select_list <- glue_collapse(unique(cols), sep = ",\n      ")
-  concept_cols <- if (needs_concept_join) ", c.concept_name, c.concept_code" else ""
+
+  # Pre-join unit names for numeric variables (LEFT JOIN, not INNER JOIN)
+  unit_join <- ""
+  unit_select <- ""
+  if (has_numeric) {
+    unit_join <- paste0(
+      "\n    LEFT JOIN @schema.concept c_unit",
+      "\n      ON t.unit_concept_id = c_unit.concept_id",
+      "\n      AND t.unit_concept_id IS NOT NULL")
+    unit_select <- ",\n      c_unit.concept_name AS unit_name"
+  }
+
+  # Include concept_name/concept_code when string search variables exist
+  string_select <- ""
+  if (has_string_search) {
+    string_select <- ",\n      c_str.concept_name, c_str.concept_code"
+  }
 
   create_sql <- glue(
     "CREATE TEMP TABLE {temp_name} AS\n",
     "SELECT\n",
-    "      {select_list}{date_select}\n",
-    "      {concept_cols}\n",
-    "    FROM @schema.{vn$db_table_name} t\n",
-    "    {concept_join}\n",
+    "      {select_list}{date_select}{unit_select}{string_select}\n",
+    "    FROM @schema.{vn$db_table_name} t{unit_join}{string_join}\n",
     "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
-    "      AND ({where_expr})")
+    "      AND {where_expr}")
 
   c(glue("DROP TABLE IF EXISTS {temp_name}"),
     create_sql,
@@ -86,15 +149,13 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names) {
 
 #' Build a SELECT for long-format numeric aggregation from temp tables.
 #'
-#' References adm_multi_temp and {alias}_filtered_temp directly — no CTEs.
-#'
-#' @param table_concepts Concepts (all types; filtered internally).
+#' @param table_concepts Concepts (all types; filtered internally to numeric).
 #' @param table_name OMOP table name.
 #' @param variable_names Variable names dataframe.
 #' @param window_start_point Windowing mode.
 #' @param cadence Cadence in hours.
 #'
-#' @return A SELECT query string, or "" if no numeric variables.
+#' @return A SELECT query string, or "".
 #' @importFrom glue glue
 #' @keywords internal
 build_long_select <- function(table_concepts, table_name, variable_names,
@@ -120,6 +181,7 @@ build_long_select <- function(table_concepts, table_name, variable_names,
     paste0(",\n      t.", filter_cols, collapse = "")
   } else ""
 
+  # unit_name is pre-joined in the filtered temp table
   glue(
     "SELECT\n",
     "      t.person_id,\n",
@@ -128,7 +190,7 @@ build_long_select <- function(table_concepts, table_name, variable_names,
     "      t.{vn$concept_id_var} AS concept_id,\n",
     "      MIN(t.value_as_number) AS min_val,\n",
     "      MAX(t.value_as_number) AS max_val,\n",
-    "      MIN(c_unit.concept_name) AS unit_name{extra_select}\n",
+    "      MIN(t.unit_name) AS unit_name{extra_select}\n",
     "    FROM adm_multi_temp adm\n",
     "    INNER JOIN {filtered_temp} t\n",
     "      ON adm.person_id = t.person_id\n",
@@ -136,9 +198,6 @@ build_long_select <- function(table_concepts, table_name, variable_names,
     "           OR (t.visit_occurrence_id IS NULL\n",
     "               AND t.table_datetime >= adm.hospital_admission_datetime\n",
     "               AND t.table_datetime <  adm.hospital_discharge_datetime))\n",
-    "    LEFT JOIN @schema.concept c_unit\n",
-    "      ON t.unit_concept_id = c_unit.concept_id\n",
-    "      AND t.unit_concept_id IS NOT NULL\n",
     "    WHERE {window_expr} >= @first_window\n",
     "      AND {window_expr} <= @last_window\n",
     "      AND t.value_as_number IS NOT NULL\n",
@@ -150,13 +209,17 @@ build_long_select <- function(table_concepts, table_name, variable_names,
 
 #' Build a SELECT for count-based aggregation from temp tables.
 #'
-#' @param table_concepts Concepts (all types; filtered internally).
+#' For tables with string search variables (concept_name/concept_code),
+#' joins the concept table in the aggregation step — NOT in the filtered
+#' temp table.
+#'
+#' @param table_concepts Concepts (all types; filtered internally to counts).
 #' @param table_name OMOP table name.
 #' @param variable_names Variable names dataframe.
 #' @param window_start_point Windowing mode.
 #' @param cadence Cadence in hours.
 #'
-#' @return A SELECT query string, or "" if no count variables.
+#' @return A SELECT query string, or "".
 #' @importFrom glue glue
 #' @keywords internal
 build_count_select <- function(table_concepts, table_name, variable_names,
@@ -203,10 +266,7 @@ build_count_select <- function(table_concepts, table_name, variable_names,
 }
 
 
-#' Build the Drug table query from temp tables.
-#'
-#' Drug uses generate_series / OUTER APPLY for date range expansion.
-#' References adm_multi_temp and drg_filtered_temp.
+#' Build Drug table statements (filtered temp + aggregation SELECT).
 #'
 #' @param concepts Full concepts dataframe.
 #' @param variable_names Variable names dataframe.
@@ -214,8 +274,7 @@ build_count_select <- function(table_concepts, table_name, variable_names,
 #' @param cadence Cadence in hours.
 #' @param dialect SQL dialect.
 #'
-#' @return A list with \code{filtered_stmts} (CREATE/ANALYZE statements)
-#'   and \code{select_sql} (the aggregation SELECT), or NULL if no Drug concepts.
+#' @return A list with filtered_stmts and select_sql, or NULL.
 #' @importFrom glue glue
 #' @keywords internal
 build_drug_statements <- function(concepts, variable_names,
@@ -233,7 +292,6 @@ build_drug_statements <- function(concepts, variable_names,
   where_expr <- where_clause(drug, variable_names, "Drug")
   drug_join <- translate_drug_join(dialect)
 
-  # Filtered temp table for drugs
   filtered_stmts <- c(
     "DROP TABLE IF EXISTS drg_filtered_temp",
     glue(

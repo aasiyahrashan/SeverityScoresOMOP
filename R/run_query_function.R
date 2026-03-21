@@ -299,15 +299,10 @@ execute_batch <- function(conn, person_ids_batch,
                           concept_map,
                           visit_mode, resolved_gt) {
 
-  # --- 1. person_batch ---
-  create_person_batch(conn, person_ids_batch, dialect)
-
-  # --- 2. Admission temp tables ---
-  # Render the pasted visits SQL with batch-specific params, then
-  # render remaining @schema/@age_query params
+  # --- 1. Admission temp tables ---
+  # Pasted visits SQL uses inline @person_ids, not the person_batch temp table.
   pv_rendered <- render_batch_params(
     pasted_visits_sql, visit_mode, person_ids_batch, resolved_gt, dialect)
-  # The pasted visits SQL still has @schema and @age_query — render those too
   pv_rendered <- pv_rendered %>%
     render(schema = schema, age_query = age_qry) %>%
     translate(tolower(dialect)) %>%
@@ -315,6 +310,19 @@ execute_batch <- function(conn, person_ids_batch,
            end_date = single_quote(end_date))
 
   create_admission_temp_tables(conn, pv_rendered, dialect)
+
+  # --- 2. Create person_batch from actual admissions ---
+  # Only patients with admissions in the date range. This is much smaller
+  # than the full batch (e.g. 417 vs 2791) and makes every subsequent
+  # IN (SELECT person_id FROM person_batch) filter faster.
+  drop_temp_table(conn, "person_batch", dialect)
+  dbExecute(conn, paste0(
+    "CREATE TEMP TABLE person_batch AS ",
+    "SELECT DISTINCT person_id FROM adm_details_temp"))
+  dbExecute(conn, "ANALYZE person_batch")
+  n_patients <- dbGetQuery(conn, "SELECT COUNT(*) AS n FROM person_batch")$n
+  message("  person_batch: ", n_patients, " patients (from ",
+          length(person_ids_batch), " candidates)")
 
   # --- 3. Admissions result ---
   t0 <- Sys.time()

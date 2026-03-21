@@ -202,6 +202,8 @@ variables_query <- function(concepts, concept_id_var, table_id_var = "") {
                  " THEN {table_id_var} END) AS count_{short_name}"))
 
   # --- String search (concept_name / concept_code) ---
+  # concept_name/concept_code are pre-joined into the filtered temp table
+  # when string search variables exist for that table.
   string_search <- concepts %>%
     filter(omop_variable %in% c("concept_name", "concept_code")) %>%
     group_by(short_name, omop_variable, additional_filter_variable_name) %>%
