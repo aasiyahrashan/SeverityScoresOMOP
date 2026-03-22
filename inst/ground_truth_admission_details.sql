@@ -2,7 +2,7 @@
 -- but using pre-resolved ground truth data passed as a VALUES clause.
 --
 -- The ground truth IDs are resolved to OMOP person_id and visit_occurrence_id
--- in R before this query runs. The VALUES clause (@ground_truth_values) contains
+-- in R before this query runs. The VALUES clause (ground_truth_values param) contains
 -- rows of (person_id, visit_occurrence_id, icu_admission_datetime, icu_discharge_datetime).
 --
 -- Hospital admission/discharge times are always taken from visit_occurrence,

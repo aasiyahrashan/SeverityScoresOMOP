@@ -485,13 +485,16 @@ execute_batch <- function(conn, person_ids_batch,
                           visit_mode, resolved_gt) {
 
   # --- 1. Admission temp tables ---
-  pv_rendered <- render_batch_params(
-    pasted_visits_sql, visit_mode, person_ids_batch, resolved_gt, dialect)
-  pv_rendered <- pv_rendered %>%
+  # Render schema/age/dates and translate BEFORE substituting batch-specific
+  # params (VALUES clause or person_ids). This prevents SqlRender from
+  # misinterpreting content in the VALUES clause as @parameters.
+  pv_rendered <- pasted_visits_sql %>%
     render(schema = schema, age_query = age_qry) %>%
     translate(tolower(dialect)) %>%
     render(start_date = single_quote(start_date),
            end_date = single_quote(end_date))
+  pv_rendered <- render_batch_params(
+    pv_rendered, visit_mode, person_ids_batch, resolved_gt, dialect)
 
   create_admission_temp_tables(conn, pv_rendered, dialect)
 
@@ -830,10 +833,16 @@ get_score_variables <- function(conn, dialect, schema,
     gt_join <- gt_join[, !names(gt_join) %in%
                          c("visit_occurrence_id", "icu_discharge_datetime"),
                        with = FALSE]
+    # resolved_gt has icu_admission_datetime as character (from format_datetime_for_sql),
+    # but data has it as POSIXct from Postgres. Cast gt_join to POSIXct for consistency.
+    gt_join[, icu_admission_datetime := as.POSIXct(icu_admission_datetime, tz = "UTC")]
     gt_join <- unique(gt_join, by = c("person_id", "icu_admission_datetime"))
     data <- merge(data, gt_join,
                   by = c("person_id", "icu_admission_datetime"), all.x = TRUE)
   }
+
+  total_elapsed <- round(difftime(Sys.time(), setup_start, units = "secs"), 1)
+  message("Total time: ", total_elapsed, "s")
 
   as_tibble(data)
 }

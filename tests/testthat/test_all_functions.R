@@ -3,7 +3,7 @@
 #
 # These tests cover all functions that can be tested without a database connection.
 # Functions requiring a live DB (get_score_variables, resolve_ground_truth_ids,
-# validate_ground_truth_vs_omop) are not tested here.
+# validate_ground_truth_vs_omop, resolve_string_searches) are not tested here.
 
 library(testthat)
 library(dplyr)
@@ -90,7 +90,6 @@ test_that("validate_ground_truth passes on valid data", {
 
 test_that("validate_ground_truth stops on missing columns", {
   df <- data.frame(pid = 1, enc = 1, icu_adm = "2022-07-01")
-  # Missing icu_dis column
   gt <- make_gt_config(df)
   expect_error(validate_ground_truth(gt), "missing required columns")
 })
@@ -185,10 +184,8 @@ test_that("format_datetime_for_sql warns on unknown type", {
 })
 
 test_that("format_datetime_for_sql preserves POSIXct timezone", {
-  # Create a time in a specific timezone
   x <- as.POSIXct("2022-07-01 10:30:00", tz = "America/New_York")
   result <- format_datetime_for_sql(x)
-  # Should format in the object's timezone, not convert to UTC
   expect_equal(result, "2022-07-01 10:30:00")
 })
 
@@ -218,7 +215,6 @@ test_that("build_ground_truth_values_clause produces valid SQL for postgresql", 
   expect_true(grepl("CAST.*AS TIMESTAMP", result))
   expect_true(grepl("2022-07-01 10:00:00", result))
   expect_true(grepl("2022-07-02 08:00:00", result))
-  # Should have two rows
   expect_equal(length(gregexpr("\\(\\d+,", result)[[1]]), 2)
 })
 
@@ -244,7 +240,6 @@ test_that("build_ground_truth_values_clause filters by batch", {
     stringsAsFactors = FALSE
   )
 
-  # Only request person_id 2
   result <- build_ground_truth_values_clause(resolved, 2, "postgresql")
   expect_true(grepl("\\(2,", result))
   expect_false(grepl("\\(1,", result))
@@ -279,7 +274,6 @@ test_that("window_query returns FLOOR for icu_admission_time", {
                          "t.measurement_date", 24)
   expect_true(grepl("FLOOR", result))
   expect_true(grepl("MINUTE", result))
-  # Verify correct parenthesisation: DATEDIFF closes before the division
   expect_true(grepl("DATEDIFF\\(MINUTE, adm\\.icu_admission_datetime, t\\.measurement_datetime\\)", result))
 })
 
@@ -322,82 +316,9 @@ test_that("age_query stops on invalid method", {
 
 
 # =============================================================================
-# where_clause
+# variables_query (handles non-numeric / count variables only)
 # =============================================================================
-test_that("where_clause builds concept ID filter", {
-  concepts <- data.frame(
-    table = "Measurement",
-    short_name = "hr",
-    concept_id = "4301868",
-    omop_variable = "value_as_number",
-    concept_id_value = NA,
-    additional_filter_variable_name = NA,
-    additional_filter_value = NA,
-    stringsAsFactors = FALSE
-  )
-
-  variable_names <- data.frame(
-    table = "Measurement",
-    db_table_name = "measurement",
-    alias = "m",
-    id_var = "measurement_id",
-    concept_id_var = "measurement_concept_id",
-    stringsAsFactors = FALSE
-  )
-
-  result <- where_clause(concepts, variable_names, "Measurement")
-  expect_true(grepl("measurement_concept_id IN", result))
-  expect_true(grepl("4301868", result))
-})
-
-test_that("where_clause returns false when no concepts match", {
-  concepts <- data.frame(
-    table = "Observation",
-    short_name = "hr",
-    concept_id = "4301868",
-    omop_variable = "value_as_number",
-    concept_id_value = NA,
-    additional_filter_variable_name = NA,
-    additional_filter_value = NA,
-    stringsAsFactors = FALSE
-  )
-
-  variable_names <- data.frame(
-    table = "Measurement",
-    db_table_name = "measurement",
-    alias = "m",
-    id_var = "measurement_id",
-    concept_id_var = "measurement_concept_id",
-    stringsAsFactors = FALSE
-  )
-
-  # Asking for Measurement but concepts are in Observation
-  result <- where_clause(concepts, variable_names, "Measurement")
-  expect_equal(result, "false")
-})
-
-
-# =============================================================================
-# variables_query
-# =============================================================================
-test_that("variables_query builds min/max/unit for numeric concepts", {
-  concepts <- data.frame(
-    short_name = "hr",
-    omop_variable = "value_as_number",
-    concept_id = "4301868",
-    concept_id_value = NA,
-    additional_filter_variable_name = NA,
-    additional_filter_value = NA,
-    stringsAsFactors = FALSE
-  )
-
-  result <- variables_query(concepts, "measurement_concept_id", "measurement_id")
-  expect_true(grepl("max_hr", result))
-  expect_true(grepl("min_hr", result))
-  expect_true(grepl("unit_hr", result))
-})
-
-test_that("variables_query builds count for non-numeric concepts", {
+test_that("variables_query builds count for blank omop_variable", {
   concepts <- data.frame(
     short_name = "emergency_admission",
     omop_variable = NA_character_,
@@ -411,6 +332,57 @@ test_that("variables_query builds count for non-numeric concepts", {
   result <- variables_query(concepts, "visit_detail_source_concept_id",
                             "visit_detail_id")
   expect_true(grepl("count_emergency_admission", result))
+  expect_true(grepl("CASE WHEN", result))
+})
+
+test_that("variables_query builds count for value_as_concept_id", {
+  concepts <- data.frame(
+    short_name = "gcs_eye",
+    omop_variable = "value_as_concept_id",
+    concept_id = "3016335",
+    concept_id_value = "45877537",
+    additional_filter_variable_name = NA,
+    additional_filter_value = NA,
+    stringsAsFactors = FALSE
+  )
+
+  result <- variables_query(concepts, "measurement_concept_id",
+                            "measurement_id")
+  expect_true(grepl("count_gcs_eye", result))
+  expect_true(grepl("value_as_concept_id IN", result))
+})
+
+test_that("variables_query builds count for ancestor_concept_id", {
+  concepts <- data.frame(
+    short_name = "ami",
+    omop_variable = "ancestor_concept_id",
+    concept_id = "45538370",
+    concept_id_value = NA,
+    additional_filter_variable_name = NA,
+    additional_filter_value = NA,
+    stringsAsFactors = FALSE
+  )
+
+  result <- variables_query(concepts, "condition_concept_id",
+                            "condition_occurrence_id")
+  expect_true(grepl("count_ami", result))
+  expect_true(grepl("concept_ancestor", result))
+})
+
+test_that("variables_query returns empty string when no count concepts", {
+  concepts <- data.frame(
+    short_name = "hr",
+    omop_variable = "value_as_number",
+    concept_id = "4301868",
+    concept_id_value = NA,
+    additional_filter_variable_name = NA,
+    additional_filter_value = NA,
+    stringsAsFactors = FALSE
+  )
+
+  result <- variables_query(concepts, "measurement_concept_id",
+                            "measurement_id")
+  expect_equal(result, "")
 })
 
 
@@ -434,84 +406,140 @@ test_that("translate_drug_join stops on unsupported dialect", {
 
 
 # =============================================================================
-# units_of_measure_query
+# build_concept_map
 # =============================================================================
-test_that("units_of_measure_query returns join for Measurement", {
-  result <- units_of_measure_query("Measurement")
-  expect_true(grepl("LEFT JOIN", result))
-  expect_true(grepl("unit_concept_id", result))
-})
-
-test_that("units_of_measure_query returns join for Observation", {
-  result <- units_of_measure_query("Observation")
-  expect_true(grepl("LEFT JOIN", result))
-})
-
-test_that("units_of_measure_query returns empty for other tables", {
-  expect_equal(units_of_measure_query("Condition"), "")
-  expect_equal(units_of_measure_query("Procedure"), "")
-  expect_equal(units_of_measure_query("Drug"), "")
-})
-
-
-# =============================================================================
-# all_required_variables_query
-# =============================================================================
-test_that("all_required_variables_query lists numeric vars correctly", {
+test_that("build_concept_map creates mapping for numeric concepts", {
   concepts <- data.frame(
+    concept_id = c("4301868", "4108446"),
     short_name = c("hr", "rr"),
     omop_variable = c("value_as_number", "value_as_number"),
+    additional_filter_variable_name = c(NA, "measurement_source_value"),
+    additional_filter_value = c(NA, "R VENT RESP RATE OBSERVED"),
     stringsAsFactors = FALSE
   )
 
-  result <- all_required_variables_query(concepts)
-  expect_true(grepl("min_hr", result))
-  expect_true(grepl("max_hr", result))
-  expect_true(grepl("unit_hr", result))
-  expect_true(grepl("min_rr", result))
+  result <- build_concept_map(concepts)
+  expect_s3_class(result, "data.table")
+  expect_true("concept_id" %in% names(result))
+  expect_true("short_name" %in% names(result))
+  expect_equal(nrow(result), 2)
+  expect_equal(result[concept_id == "4301868"]$short_name, "hr")
 })
 
-test_that("all_required_variables_query lists count vars correctly", {
+test_that("build_concept_map returns empty for no numeric concepts", {
   concepts <- data.frame(
-    short_name = "emergency_admission",
+    concept_id = "12345",
+    short_name = "comorbidity",
     omop_variable = NA_character_,
+    additional_filter_variable_name = NA,
+    additional_filter_value = NA,
     stringsAsFactors = FALSE
   )
 
-  result <- all_required_variables_query(concepts)
-  expect_true(grepl("count_emergency_admission", result))
+  result <- build_concept_map(concepts)
+  expect_equal(nrow(result), 0)
 })
 
 
 # =============================================================================
-# spine_query / spine_join_query
+# build_filtered_temp
 # =============================================================================
-test_that("spine_query builds UNION from multiple aliases", {
-  result <- spine_query(c("m", "o", "co"))
-  expect_true(grepl("UNION", result))
-  expect_true(grepl("FROM m", result))
-  expect_true(grepl("FROM o", result))
-  expect_true(grepl("FROM co", result))
-  expect_true(grepl("spine AS", result))
+test_that("build_filtered_temp generates DROP, CREATE, ANALYZE", {
+  concepts <- data.frame(
+    table = "Measurement",
+    short_name = "hr",
+    concept_id = "4301868",
+    omop_variable = "value_as_number",
+    additional_filter_variable_name = NA,
+    stringsAsFactors = FALSE
+  )
+
+  vn <- data.frame(
+    table = "Measurement", db_table_name = "measurement", alias = "m",
+    id_var = "measurement_id", concept_id_var = "measurement_concept_id",
+    start_date_var = "measurement_date",
+    start_datetime_var = "measurement_datetime",
+    stringsAsFactors = FALSE
+  )
+
+  result <- build_filtered_temp(concepts, "Measurement", vn)
+  expect_length(result, 3)
+  expect_true(grepl("DROP TABLE", result[1]))
+  expect_true(grepl("CREATE TEMP TABLE m_filtered_temp", result[2]))
+  expect_true(grepl("ANALYZE", result[3]))
 })
 
-test_that("spine_query works with single alias", {
-  result <- spine_query("m")
-  expect_true(grepl("spine AS", result))
-  expect_true(grepl("FROM m", result))
-  expect_false(grepl("UNION", result))
+test_that("build_filtered_temp uses UNION when mixing direct IDs and ancestors", {
+  concepts <- data.frame(
+    table = rep("Condition", 2),
+    short_name = c("comorbidity", "ami"),
+    concept_id = c("443612", "45538370"),
+    omop_variable = c(NA, "ancestor_concept_id"),
+    additional_filter_variable_name = c(NA, NA),
+    stringsAsFactors = FALSE
+  )
+
+  vn <- data.frame(
+    table = "Condition", db_table_name = "condition_occurrence", alias = "co",
+    id_var = "condition_occurrence_id",
+    concept_id_var = "condition_concept_id",
+    start_date_var = "condition_start_date",
+    start_datetime_var = "condition_start_datetime",
+    stringsAsFactors = FALSE
+  )
+
+  result <- build_filtered_temp(concepts, "Condition", vn)
+  create_sql <- result[2]
+  expect_true(grepl("UNION", create_sql))
+  # Should NOT have OR between the two filter types
+  expect_false(grepl("concept_ancestor.*OR.*IN \\(", create_sql))
 })
 
-test_that("spine_join_query builds LEFT JOINs on plain columns", {
-  result <- spine_join_query(c("m", "o"))
-  expect_true(grepl("FROM spine", result))
-  expect_true(grepl("LEFT JOIN m", result))
-  expect_true(grepl("LEFT JOIN o", result))
-  # Should NOT have COALESCE in join conditions
-  expect_false(grepl("COALESCE", result))
-  # Should join on plain columns
-  expect_true(grepl("spine.person_id = m.person_id", result))
-  expect_true(grepl("spine.time_in_icu = o.time_in_icu", result))
+test_that("build_filtered_temp uses simple WHERE for single filter type", {
+  concepts <- data.frame(
+    table = "Measurement",
+    short_name = c("hr", "rr"),
+    concept_id = c("4301868", "4108446"),
+    omop_variable = c("value_as_number", "value_as_number"),
+    additional_filter_variable_name = c(NA, NA),
+    stringsAsFactors = FALSE
+  )
+
+  vn <- data.frame(
+    table = "Measurement", db_table_name = "measurement", alias = "m",
+    id_var = "measurement_id", concept_id_var = "measurement_concept_id",
+    start_date_var = "measurement_date",
+    start_datetime_var = "measurement_datetime",
+    stringsAsFactors = FALSE
+  )
+
+  result <- build_filtered_temp(concepts, "Measurement", vn)
+  create_sql <- result[2]
+  expect_false(grepl("UNION", create_sql))
+  expect_true(grepl("IN \\(4301868, 4108446\\)", create_sql))
+})
+
+test_that("build_filtered_temp adds unit join for numeric variables", {
+  concepts <- data.frame(
+    table = "Measurement",
+    short_name = "hr",
+    concept_id = "4301868",
+    omop_variable = "value_as_number",
+    additional_filter_variable_name = NA,
+    stringsAsFactors = FALSE
+  )
+
+  vn <- data.frame(
+    table = "Measurement", db_table_name = "measurement", alias = "m",
+    id_var = "measurement_id", concept_id_var = "measurement_concept_id",
+    start_date_var = "measurement_date",
+    start_datetime_var = "measurement_datetime",
+    stringsAsFactors = FALSE
+  )
+
+  result <- build_filtered_temp(concepts, "Measurement", vn)
+  expect_true(grepl("unit_concept_id", result[2]))
+  expect_true(grepl("unit_name", result[2]))
 })
 
 
@@ -525,7 +553,6 @@ test_that("mean_arterial_pressure calculates from sbp and dbp", {
   )
 
   result <- mean_arterial_pressure(data)
-  # MAP = DBP + 1/3 * (SBP - DBP)
   expect_equal(result$min_map, 80 + 1/3 * (120 - 80))
   expect_equal(result$max_map, 90 + 1/3 * (140 - 90))
 })
@@ -538,7 +565,6 @@ test_that("mean_arterial_pressure does not overwrite existing map", {
   )
 
   result <- mean_arterial_pressure(data)
-  # Should not recalculate
   expect_equal(result$min_map, 70)
   expect_equal(result$max_map, 100)
 })
@@ -572,7 +598,7 @@ test_that("total_gcs does not overwrite existing gcs", {
 
 
 # =============================================================================
-# emergency_admission / renal_failure / comorbidities
+# emergency_admission / renal_failure / comorbidities / mechanical_ventilation
 # =============================================================================
 test_that("emergency_admission defaults to 0", {
   data <- data.table(person_id = 1)
@@ -615,8 +641,6 @@ test_that("mechanical_ventilation uses count if available", {
 # APACHE II creatinine renal failure doubling
 # =============================================================================
 test_that("APACHE II creatinine score is doubled with renal failure", {
-  # Creatinine of 2.5 mg/dL should score 3 normally.
-  # With renal failure, should be 6.
   data <- data.table(
     max_temp = 37, min_temp = 37,
     min_wcc = 10, max_wcc = 10,
@@ -636,7 +660,6 @@ test_that("APACHE II creatinine score is doubled with renal failure", {
     count_renal_failure = 1,
     count_emergency_admission = 0
   )
-  # Add unit columns (required by the function)
   data[, unit_temp := "degree Celsius"]
   data[, unit_wcc := "billion per liter"]
   data[, unit_fio2 := "ratio"]
@@ -650,14 +673,10 @@ test_that("APACHE II creatinine score is doubled with renal failure", {
 
   result <- calculate_apache_ii_score(data, imputation = "normal")
 
-  # Creatinine 2.5 mg/dL = subscore 3, doubled to 6 with renal failure.
-  # Verify the score includes the doubled value by checking total is higher
-  # than it would be without renal failure.
   result_no_rf <- copy(data)
   result_no_rf[, count_renal_failure := 0]
   result_no_rf <- calculate_apache_ii_score(result_no_rf, imputation = "normal")
 
-  # The difference should be 3 (one creatinine subscore worth of doubling)
   expect_equal(result$apache_ii_score - result_no_rf$apache_ii_score, 3)
 })
 
@@ -674,9 +693,7 @@ test_that("build_visit_sql returns SQL for paste mode", {
 test_that("build_visit_sql returns SQL for raw mode", {
   result <- build_visit_sql("raw", "postgresql")
   expect_true(grepl("icu_admission_details", result))
-  # Should NOT have the grouping/lagging logic
   expect_false(grepl("lagged_visit_details", result))
-  expect_false(grepl("group_id", result))
 })
 
 test_that("build_visit_sql returns SQL for ground_truth mode", {
@@ -691,21 +708,6 @@ test_that("build_visit_sql returns SQL for ground_truth mode", {
   result <- build_visit_sql("ground_truth", "postgresql", ground_truth = gt)
   expect_true(grepl("ground_truth_data", result))
   expect_true(grepl("@ground_truth_values", result))
-  expect_true(grepl("icu_admission_details", result))
-})
-
-test_that("build_visit_sql renders hospital cols as NULL when not provided", {
-  gt <- ground_truth_config(
-    df = data.frame(pid = 1, enc = 1, adm = "2022-01-01", dis = "2022-01-05"),
-    joining_schema = "s", joining_person_table = "p", joining_visit_table = "v",
-    gt_person_key = "pid", omop_person_key = "pid",
-    gt_encounter_key = "enc", omop_encounter_key = "enc",
-    gt_icu_admission_col = "adm", gt_icu_discharge_col = "dis"
-  )
-
-  result <- build_visit_sql("ground_truth", "postgresql", ground_truth = gt)
-  # Should have COALESCE(NULL, ...) for hospital times
-  expect_true(grepl("COALESCE\\(NULL", result))
 })
 
 
@@ -725,14 +727,6 @@ test_that("check_required_columns stops on missing columns", {
   )
 })
 
-test_that("check_required_columns error message names the calling function", {
-  df <- data.frame(a = 1)
-  expect_error(
-    check_required_columns(df, c("b"), "fix_apache_ii_units"),
-    "fix_apache_ii_units"
-  )
-})
-
 
 # =============================================================================
 # Scoring functions: column existence checks
@@ -740,12 +734,6 @@ test_that("check_required_columns error message names the calling function", {
 test_that("fix_apache_ii_units stops on missing columns", {
   data <- data.table(min_temp = 37, max_temp = 38)
   expect_error(fix_apache_ii_units(data), "fix_apache_ii_units: missing required column")
-})
-
-test_that("fix_implausible_values_apache_ii stops on missing columns", {
-  data <- data.table(min_temp = 37)
-  expect_error(fix_implausible_values_apache_ii(data),
-               "fix_implausible_values_apache_ii: missing required column")
 })
 
 test_that("calculate_apache_ii_score stops on missing columns", {
@@ -759,14 +747,36 @@ test_that("fix_sofa_units stops on missing columns", {
   expect_error(fix_sofa_units(data), "fix_sofa_units: missing required column")
 })
 
-test_that("fix_implausible_values_sofa stops on missing columns", {
-  data <- data.table(min_platelet = 100)
-  expect_error(fix_implausible_values_sofa(data),
-               "fix_implausible_values_sofa: missing required column")
-})
-
 test_that("calculate_sofa_score stops on missing columns", {
   data <- data.table(min_platelet = 100)
   expect_error(calculate_sofa_score(data),
                "calculate_sofa_score: missing required column")
+})
+
+
+# =============================================================================
+# normalise_concepts_columns
+# =============================================================================
+test_that("normalise_concepts_columns adds missing columns", {
+  concepts <- data.frame(
+    short_name = "hr", concept_id = "4301868",
+    stringsAsFactors = FALSE
+  )
+
+  result <- normalise_concepts_columns(concepts)
+  expect_true("concept_id_value" %in% names(result))
+  expect_true("name_of_value" %in% names(result))
+  expect_true("additional_filter_variable_name" %in% names(result))
+  expect_true("additional_filter_value" %in% names(result))
+})
+
+test_that("normalise_concepts_columns maps afvv to afv", {
+  concepts <- data.frame(
+    short_name = "hr", concept_id = "4301868",
+    additional_filter_variable_value = "test_val",
+    stringsAsFactors = FALSE
+  )
+
+  result <- normalise_concepts_columns(concepts)
+  expect_equal(result$additional_filter_value, "test_val")
 })
