@@ -204,9 +204,7 @@ validate_ground_truth <- function(gt_config) {
   }
 
   # Check for duplicate rows per (person_key, icu_admission, icu_discharge).
-
   # Multiple rows per CrossICU stay (e.g. from bed moves) will cause duplicate
-
   # VALUES in the SQL query and corrupt per-stay aggregated columns when joining
   # back. The ground truth should be collapsed to one row per stay before use.
   dup_key_cols <- c(gt_person_key, gt_icu_admission_col, gt_icu_discharge_col)
@@ -363,7 +361,7 @@ validate_ground_truth_vs_omop <- function(conn,
 #'   \code{icu_discharge_datetime} (as formatted character strings) added.
 #'   All original columns are preserved.
 #'
-#' @importFrom DBI dbGetQuery
+#' @importFrom DBI dbGetQuery dbExecute
 #' @importFrom glue glue glue_collapse
 #' @importFrom SqlRender translate
 resolve_ground_truth_ids <- function(conn, gt_config, dialect) {
@@ -384,36 +382,61 @@ resolve_ground_truth_ids <- function(conn, gt_config, dialect) {
   qek <- quote_identifier(omop_encounter_key, dialect)
 
   # --- Resolve person keys to person_id ---
+  # Upload GT keys to temp tables and join server-side.
+  # This is much faster than IN (...) against large unindexed joining tables.
   gt_patient_keys <- unique(ground_truth_df[[gt_person_key]])
+  is_numeric_pk <- is.numeric(gt_patient_keys)
 
-  if (is.numeric(gt_patient_keys)) {
-    key_list <- glue_collapse(gt_patient_keys, sep = ", ")
-  } else {
-    key_list <- glue_collapse(
-      paste0("'", gt_patient_keys, "'"), sep = ", ")
+  dbExecute(conn, "DROP TABLE IF EXISTS gt_person_keys_temp")
+  col_type <- if (is_numeric_pk) "BIGINT" else "TEXT"
+  dbExecute(conn, glue("CREATE TEMP TABLE gt_person_keys_temp (key_val {col_type})"))
+  batch_sz <- 5000
+  for (start in seq(1, length(gt_patient_keys), by = batch_sz)) {
+    end <- min(start + batch_sz - 1, length(gt_patient_keys))
+    chunk <- gt_patient_keys[start:end]
+    if (is_numeric_pk) {
+      vals <- glue_collapse(glue("({chunk})"), sep = ", ")
+    } else {
+      vals <- glue_collapse(glue("('{chunk}')"), sep = ", ")
+    }
+    dbExecute(conn, glue("INSERT INTO gt_person_keys_temp VALUES {vals}"))
   }
+  dbExecute(conn, "ANALYZE gt_person_keys_temp")
 
-  person_sql <- glue("SELECT DISTINCT {qpk}, person_id
-                      FROM {joining_schema}.{joining_person_table}
-                      WHERE {qpk} IN ({key_list})")
+  person_sql <- glue("SELECT DISTINCT j.{qpk}, j.person_id
+                      FROM {joining_schema}.{joining_person_table} j
+                      INNER JOIN gt_person_keys_temp k
+                        ON j.{qpk} = k.key_val")
   person_sql <- translate(person_sql, tolower(dialect))
   person_map <- dbGetQuery(conn, person_sql)
+  dbExecute(conn, "DROP TABLE IF EXISTS gt_person_keys_temp")
 
   # --- Resolve encounter keys to visit_occurrence_id ---
   gt_encounter_keys <- unique(ground_truth_df[[gt_encounter_key]])
+  is_numeric_ek <- is.numeric(gt_encounter_keys)
 
-  if (is.numeric(gt_encounter_keys)) {
-    enc_list <- glue_collapse(gt_encounter_keys, sep = ", ")
-  } else {
-    enc_list <- glue_collapse(
-      paste0("'", gt_encounter_keys, "'"), sep = ", ")
+  dbExecute(conn, "DROP TABLE IF EXISTS gt_encounter_keys_temp")
+  col_type <- if (is_numeric_ek) "BIGINT" else "TEXT"
+  dbExecute(conn, glue("CREATE TEMP TABLE gt_encounter_keys_temp (key_val {col_type})"))
+  for (start in seq(1, length(gt_encounter_keys), by = batch_sz)) {
+    end <- min(start + batch_sz - 1, length(gt_encounter_keys))
+    chunk <- gt_encounter_keys[start:end]
+    if (is_numeric_ek) {
+      vals <- glue_collapse(glue("({chunk})"), sep = ", ")
+    } else {
+      vals <- glue_collapse(glue("('{chunk}')"), sep = ", ")
+    }
+    dbExecute(conn, glue("INSERT INTO gt_encounter_keys_temp VALUES {vals}"))
   }
+  dbExecute(conn, "ANALYZE gt_encounter_keys_temp")
 
-  visit_sql <- glue("SELECT DISTINCT {qek}, visit_occurrence_id
-                     FROM {joining_schema}.{joining_visit_table}
-                     WHERE {qek} IN ({enc_list})")
+  visit_sql <- glue("SELECT DISTINCT j.{qek}, j.visit_occurrence_id
+                     FROM {joining_schema}.{joining_visit_table} j
+                     INNER JOIN gt_encounter_keys_temp k
+                       ON j.{qek} = k.key_val")
   visit_sql <- translate(visit_sql, tolower(dialect))
   visit_map <- dbGetQuery(conn, visit_sql)
+  dbExecute(conn, "DROP TABLE IF EXISTS gt_encounter_keys_temp")
 
   # Normalise column names: the DB may return the quoted column name in a
   # different case than expected (e.g. PostgreSQL may lowercase it despite
