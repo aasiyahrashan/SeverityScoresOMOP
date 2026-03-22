@@ -43,6 +43,16 @@ mechanical_ventilation <- function(data) {
 fix_sofa_units <- function(data) {
   data <- as.data.table(data)
 
+  # Check required columns.
+  required <- c(
+    "min_fio2", "max_fio2",
+    "min_pao2", "max_pao2", "unit_pao2",
+    "min_creatinine", "max_creatinine", "unit_creatinine",
+    "min_bilirubin", "max_bilirubin", "unit_bilirubin",
+    "min_platelet", "max_platelet", "unit_platelet"
+  )
+  check_required_columns(data, required, "fix_sofa_units")
+
   # FiO2. Not bothering with unit of measure. Going with whether it's a ratio or percentage.
   # Making it a ratio.
   data[max_fio2 > 1, max_fio2 := max_fio2 / 100]
@@ -91,10 +101,10 @@ fix_sofa_units <- function(data) {
   # Which is the same as thousand per cubic millimeter. And thousand per microliter.
   # /mm3, /uL
   data[unit_platelet  %in% c("per microliter", "cells per microliter",
-                            "per cubic millimeter", "cells per cubic millimeter"),
+                             "per cubic millimeter", "cells per cubic millimeter"),
        max_platelet := max_platelet / 1000]
   data[unit_platelet %in% c("per microliter", "cells per microliter",
-                           "per cubic millimeter", "cells per cubic millimeter"),
+                            "per cubic millimeter", "cells per cubic millimeter"),
        min_platelet := min_platelet / 1000]
 
   # per liter
@@ -131,6 +141,16 @@ fix_sofa_units <- function(data) {
 #' @import data.table
 #' @export
 fix_implausible_values_sofa <- function(data) {
+  # Check required columns.
+  required <- c(
+    "min_platelet", "max_platelet", "unit_platelet",
+    "min_bilirubin", "max_bilirubin", "unit_bilirubin",
+    "min_fio2", "max_fio2", "unit_fio2",
+    "min_pao2", "max_pao2", "unit_pao2",
+    "min_creatinine", "max_creatinine", "unit_creatinine"
+  )
+  check_required_columns(data, required, "fix_implausible_values_sofa")
+
   # platelets
   data[(max_platelet < 0 | max_platelet > 9999) & unit_platelet == "billion per liter", max_platelet := NA]
 
@@ -211,7 +231,7 @@ fix_implausible_values_sofa <- function(data) {
 #' @return A data frame with a variable containing the apache II score calculated.
 #' @import data.table
 #' @export
-calculate_sofa_score <- function(data, imputation = "normal") {
+calculate_sofa_score_legacy <- function(data, imputation = "normal") {
   data <- as.data.table(data)
 
   # Define the fields requested for full computation
@@ -223,12 +243,8 @@ calculate_sofa_score <- function(data, imputation = "normal") {
     "max_creatinine", "max_bilirubin"
   )
 
-  # Display a warning if fields are missing
-  if (all(!sofa %in% names(data))) {
-    warning("Some of the variables required for the SOFA calculation are missing.
-            Please make sure get_score_variables function has been run, and the concepts
-            file includes all variables.")
-  }
+  # Check that required columns exist.
+  check_required_columns(data, sofa, "calculate_sofa_score")
 
   ##### THE ORDER OF CONDITIONS IS IMPORTANT FOR ALL THE BLOCKS BELOW.
 
@@ -246,7 +262,7 @@ calculate_sofa_score <- function(data, imputation = "normal") {
     data[, (subscore_variables) := as.integer(NA)]
     total_variable <- "sofa_score_no_imputation"
   } else {
-    warning("The imputation type should either be 'normal' or 'none'")
+    stop("The imputation type must be either 'normal' or 'none', not '", imputation, "'")
   }
 
   # Respiratory. Need to know PF ratio and if patient was on MV

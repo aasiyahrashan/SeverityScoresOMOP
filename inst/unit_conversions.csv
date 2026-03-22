@@ -1,0 +1,23 @@
+variable,unit_from,conversion_factor,known_units,default_unit
+temp,value_gt_50,F_to_C,"degree Celsius,degree Fahrenheit",degree Celsius
+wcc,per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3",billion per liter
+wcc,cells per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3",billion per liter
+wcc,per liter,0.000000001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3",billion per liter
+wcc,lakhs/mm3,100,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3",billion per liter
+fio2,value_gt_1,0.01,,ratio
+pao2,kilopascal,7.50062,"kilopascal,millimeter mercury column",millimeter mercury column
+paco2,kilopascal,7.50062,"kilopascal,millimeter mercury column",millimeter mercury column
+hematocrit,value_lte_1,100,"liter per liter,percent,ratio",percent
+sodium,millimole per deciliter,10,"millimole per liter,millimole per deciliter,milliequivalent per liter",millimole per liter
+potassium,millimole per deciliter,10,"millimole per liter,millimole per deciliter,milliequivalent per liter",millimole per liter
+creatinine,micromole per liter,0.0113,"milligram per deciliter,micromole per liter,millimole per liter,milligram per liter",milligram per deciliter
+creatinine,millimole per liter,11.312,"milligram per deciliter,micromole per liter,millimole per liter,milligram per liter",milligram per deciliter
+creatinine,milligram per liter,0.1,"milligram per deciliter,micromole per liter,millimole per liter,milligram per liter",milligram per deciliter
+bilirubin,micromole per liter,0.0585,"micromole per liter,milligram per deciliter",milligram per deciliter
+platelet,per microliter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3,per microliter,cells per microliter",billion per liter
+platelet,cells per microliter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3,per microliter,cells per microliter",billion per liter
+platelet,per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3,per microliter,cells per microliter",billion per liter
+platelet,cells per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3,per microliter,cells per microliter",billion per liter
+platelet,per liter,0.000000001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3,per microliter,cells per microliter",billion per liter
+platelet,lakhs/mm3,100,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3,per microliter,cells per microliter",billion per liter
+bicarbonate,,,"millimole per liter,milliequivalent per liter",millimole per liter

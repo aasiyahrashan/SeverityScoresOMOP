@@ -11,7 +11,12 @@ WITH
 
 , measurement_non_aggregated as (
 SELECT
- t.*
+ t.person_id
+ ,t.measurement_id
+ ,t.measurement_concept_id
+ ,t.value_as_concept_id
+ ,t.visit_occurrence_id
+ ,COALESCE(t.measurement_datetime, t.measurement_date) AS measurement_datetime
  ,adm.icu_admission_datetime
 ,@window_measurement as time_in_icu
 --- The admission details table has multiple rows per pasted visit detail.
@@ -35,7 +40,10 @@ AND @window_measurement >= @first_window
 AND @window_measurement <= @last_window
 -- Filtering for GCS concepts only
 WHERE t.measurement_concept_id IN ('3016335', '3008223', '3009094')
-AND value_as_concept_id IS NOT NULL
+AND t.value_as_concept_id IS NOT NULL
+--- Use IN (subquery) instead of JOIN for person filtering.
+--- On Postgres 9, this lets the planner choose the concept_id index.
+AND t.person_id IN (SELECT person_id FROM person_batch)
 ),
 
 --- Making sure each component of the score is measured at the same time, so we're not
@@ -48,7 +56,7 @@ gcs_concepts as (
     -- So not selecting them. Identifying visits by person ID + admission time
   	,t.icu_admission_datetime
   	,t.time_in_icu
-  	,COALESCE(t.measurement_datetime, t.measurement_date) AS measurement_datetime
+  	,t.measurement_datetime
     ,MAX(CASE
 				WHEN t.measurement_concept_id = '3016335'
 					THEN t.value_as_concept_id
@@ -68,7 +76,7 @@ gcs_concepts as (
 	  t.person_id
 		,t.icu_admission_datetime
 		,t.time_in_icu
-		,COALESCE(t.measurement_datetime, t.measurement_date)
+		,t.measurement_datetime
 ),
 	----- Converting the concept IDs to numbers.
 gcs_numbers

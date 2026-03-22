@@ -95,6 +95,22 @@ comorbidities <- function(data) {
 fix_apache_ii_units <- function(data) {
   data <- as.data.table(data)
 
+  # Check that required columns exist before attempting unit conversion.
+  # Each variable needs min_, max_, and unit_ columns.
+  required <- c(
+    "min_temp", "max_temp", "unit_temp",
+    "min_wcc", "max_wcc", "unit_wcc",
+    "min_fio2", "max_fio2",
+    "min_pao2", "max_pao2", "unit_pao2",
+    "min_paco2", "max_paco2", "unit_paco2",
+    "min_hematocrit", "max_hematocrit",
+    "min_sodium", "max_sodium", "unit_sodium",
+    "min_potassium", "max_potassium", "unit_potassium",
+    "min_creatinine", "max_creatinine", "unit_creatinine",
+    "min_bicarbonate", "max_bicarbonate"
+  )
+  check_required_columns(data, required, "fix_apache_ii_units")
+
   #### Default unit for temperature is celsius.
   #### It's more accurate to divide based on values instead of what the unit says.
   data[max_temp > 50, max_temp := (max_temp - 32) * 5 / 9]
@@ -241,6 +257,24 @@ fix_apache_ii_units <- function(data) {
 #' @import data.table
 #' @export
 fix_implausible_values_apache_ii <- function(data) {
+  # Check required columns. Unit columns are needed because implausible value
+  # thresholds depend on the unit.
+  required <- c(
+    "min_temp", "max_temp", "unit_temp",
+    "min_wcc", "max_wcc", "unit_wcc",
+    "min_fio2", "max_fio2", "unit_fio2",
+    "min_pao2", "max_pao2", "unit_pao2",
+    "min_paco2", "max_paco2", "unit_paco2",
+    "min_hematocrit", "max_hematocrit", "unit_hematocrit",
+    "min_sodium", "max_sodium", "unit_sodium",
+    "min_potassium", "max_potassium", "unit_potassium",
+    "min_creatinine", "max_creatinine", "unit_creatinine",
+    "min_bicarbonate", "max_bicarbonate", "unit_bicarbonate",
+    "min_rr", "max_rr", "min_hr", "max_hr",
+    "min_ph", "max_ph"
+  )
+  check_required_columns(data, required, "fix_implausible_values_apache_ii")
+
   ### Temperature.
   data[(max_temp < 25 | max_temp > 49.9) & unit_temp == "degree Celsius", max_temp := NA]
 
@@ -270,10 +304,10 @@ fix_implausible_values_apache_ii <- function(data) {
 
   #### PaO2
   data[(max_pao2 < 20 | max_pao2 > 400) &
-    unit_pao2 == "millimeter mercury column", max_pao2 := NA]
+         unit_pao2 == "millimeter mercury column", max_pao2 := NA]
 
   data[(min_pao2 < 20 | min_pao2 > 400) &
-    unit_pao2 == "millimeter mercury column", min_pao2 := NA]
+         unit_pao2 == "millimeter mercury column", min_pao2 := NA]
 
   if (!all(unique(data$unit_pao2) %in% c("millimeter mercury column", NA))) {
     warning("pao2 is not in millimeter mercury column. Please fix before attempting to delete implausible values.")
@@ -281,10 +315,10 @@ fix_implausible_values_apache_ii <- function(data) {
 
   #### PaCO2.
   data[(max_paco2 < 0 | max_paco2 > 376) &
-    unit_paco2 == "millimeter mercury column", max_paco2 := NA]
+         unit_paco2 == "millimeter mercury column", max_paco2 := NA]
 
   data[(min_paco2 < 0 | min_paco2 > 376) &
-    unit_paco2 == "millimeter mercury column", min_paco2 := NA]
+         unit_paco2 == "millimeter mercury column", min_paco2 := NA]
 
   if (!all(unique(data$unit_paco2) %in% c("millimeter mercury column", NA))) {
     warning("pcao2 is not in millimeter mercury column. Please fix before attempting to delete implausible values.")
@@ -292,10 +326,10 @@ fix_implausible_values_apache_ii <- function(data) {
 
   #### Hematocrit
   data[(max_hematocrit < 0 | max_hematocrit > 100) &
-    unit_hematocrit == "percent", max_hematocrit := NA]
+         unit_hematocrit == "percent", max_hematocrit := NA]
 
   data[(min_hematocrit < 0 | min_hematocrit > 100) &
-    unit_hematocrit == "percent", min_hematocrit := NA]
+         unit_hematocrit == "percent", min_hematocrit := NA]
 
   if (!all(unique(data$unit_hematocrit) %in% c("percent", NA))) {
     warning("Hematocrit is not in percent. Please fix before attempting to delete implausible values.")
@@ -303,10 +337,10 @@ fix_implausible_values_apache_ii <- function(data) {
 
   #### Sodium
   data[(max_sodium < 40 | max_sodium > 260) &
-    unit_sodium == "millimole per liter", max_sodium := NA]
+         unit_sodium == "millimole per liter", max_sodium := NA]
 
   data[(min_sodium < 40 | min_sodium > 260) &
-    unit_sodium == "millimole per liter", min_sodium := NA]
+         unit_sodium == "millimole per liter", min_sodium := NA]
 
   if (!all(unique(data$unit_sodium) %in% c("millimole per liter", NA))) {
     warning("Sodium is not in millimole per liter. Please fix before attempting to delete implausible values.")
@@ -314,10 +348,10 @@ fix_implausible_values_apache_ii <- function(data) {
 
   #### Potassium
   data[(max_potassium < 1 | max_potassium > 9.9) &
-    unit_potassium == "millimole per liter", max_potassium := NA]
+         unit_potassium == "millimole per liter", max_potassium := NA]
 
   data[(min_potassium < 1 | min_potassium > 9.9) &
-    unit_potassium == "millimole per liter", min_potassium := NA]
+         unit_potassium == "millimole per liter", min_potassium := NA]
 
   if (!all(unique(data$unit_potassium) %in% c("millimole per liter", NA))) {
     warning("Potassium is not in millimole per liter. Please fix before attempting to delete implausible values.")
@@ -325,10 +359,10 @@ fix_implausible_values_apache_ii <- function(data) {
 
   #### Creatinine
   data[(max_creatinine < 0.1 | max_creatinine > 39) &
-    unit_creatinine == "milligram per deciliter", max_creatinine := NA]
+         unit_creatinine == "milligram per deciliter", max_creatinine := NA]
 
   data[(min_creatinine < 0.1 | min_creatinine > 39) &
-    unit_creatinine == "milligram per deciliter", min_creatinine := NA]
+         unit_creatinine == "milligram per deciliter", min_creatinine := NA]
 
   if (!all(unique(data$unit_creatinine) %in% c("milligram per deciliter", NA))) {
     warning("Creatinine is not in milligram per deciliter. Please fix before attempting to delete implausible values.")
@@ -336,10 +370,10 @@ fix_implausible_values_apache_ii <- function(data) {
 
   #### Bicarbonate
   data[(max_bicarbonate < 1 | max_bicarbonate > 59) &
-    unit_bicarbonate == "millimole per liter", max_bicarbonate := NA]
+         unit_bicarbonate == "millimole per liter", max_bicarbonate := NA]
 
   data[(min_bicarbonate < 1 | min_bicarbonate > 59) &
-    unit_bicarbonate == "millimole per liter", min_bicarbonate := NA]
+         unit_bicarbonate == "millimole per liter", min_bicarbonate := NA]
 
   if (!all(unique(data$unit_bicarbonate) %in% c("millimole per liter", NA))) {
     warning("Bicarbonate is not in milligram per deciliter. Please fix before attempting to delete implausible values.")
@@ -361,7 +395,7 @@ fix_implausible_values_apache_ii <- function(data) {
   if (!"min_map" %in% names(data)) {
     ### Assuming bp variables will be called sbp and dbp if not map
     if ("min_dbp" %in% names(data) &
-      "min_sbp" %in% names(data)) {
+        "min_sbp" %in% names(data)) {
       data[max_sbp < 20 | max_sbp > 299, max_sbp := NA]
       data[min_sbp < 20 | min_sbp > 299, min_sbp := NA]
 
@@ -389,7 +423,7 @@ fix_implausible_values_apache_ii <- function(data) {
 #' @return A data frame with a variable containing the apache II score calculated.
 #' @import data.table
 #' @export
-calculate_apache_ii_score <- function(data, imputation = "normal") {
+calculate_apache_ii_score_legacy <- function(data, imputation = "normal") {
   data <- as.data.table(data)
   # Define the fields requested for full computation
   # Left out the blood pressure, gcs, renal failure, admission type and comorbidity variables
@@ -403,12 +437,8 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
     "max_creatinine", "age"
   )
 
-  # Display a warning if fields are missing
-  if (all(!apache %in% names(data))) {
-    warning("Some of the variables required for the APACHE II calculation are missing.
-            Please make sure get_score_variables function has been run, and the concepts
-            file includes all variables.")
-  }
+  # Check that required columns exist.
+  check_required_columns(data, apache, "calculate_apache_ii_score")
 
   ##### THE ORDER OF CONDITIONS IS IMPORTANT FOR ALL THE BLOCKS BELOW.
 
@@ -432,7 +462,7 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
     data[, (subscore_variables) := as.integer(NA)]
     total_variable <- "apache_ii_score_no_imputation"
   } else {
-    warning("The imputation type should either be 'normal' or 'none'")
+    stop("The imputation type must be either 'normal' or 'none', not '", imputation, "'")
   }
 
   #### Temperature. Need to calculate for both min and max to work out which is worse.
@@ -490,16 +520,16 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
   data[(min_hematocrit >= 30 & min_hematocrit < 46), min_hematocrit_ap_ii := 0]
   data[(min_hematocrit >= 46 & min_hematocrit < 50), min_hematocrit_ap_ii := 1]
   data[(min_hematocrit >= 50 & min_hematocrit < 60) |
-    (min_hematocrit >= 20 & min_hematocrit < 30), min_hematocrit_ap_ii := 2]
+         (min_hematocrit >= 20 & min_hematocrit < 30), min_hematocrit_ap_ii := 2]
   data[(min_hematocrit >= 0 & min_hematocrit < 20) |
-    min_hematocrit >= 60, min_hematocrit_ap_ii := 4]
+         min_hematocrit >= 60, min_hematocrit_ap_ii := 4]
 
   data[(max_hematocrit >= 30 & max_hematocrit < 46), max_hematocrit_ap_ii := 0]
   data[(max_hematocrit >= 46 & max_hematocrit < 50), max_hematocrit_ap_ii := 1]
   data[(max_hematocrit >= 50 & max_hematocrit < 60) |
-    (max_hematocrit >= 20 & max_hematocrit < 30), max_hematocrit_ap_ii := 2]
+         (max_hematocrit >= 20 & max_hematocrit < 30), max_hematocrit_ap_ii := 2]
   data[(max_hematocrit >= 0 & max_hematocrit < 20) |
-    max_hematocrit >= 60, max_hematocrit_ap_ii := 4]
+         max_hematocrit >= 60, max_hematocrit_ap_ii := 4]
 
   #### heart rate
   data[(min_hr >= 70 & min_hr < 110), min_hr_ap_ii := 0]
@@ -545,46 +575,46 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
   data[is.na(min_ph) & (min_bicarbonate >= 32 & min_bicarbonate < 41), min_bicarbonate_ap_ii := 1]
   data[is.na(min_ph) & (min_bicarbonate >= 18 & min_bicarbonate < 22), min_bicarbonate_ap_ii := 2]
   data[is.na(min_ph) &
-    (min_bicarbonate >= 15 & min_bicarbonate >= 18) |
-    (min_bicarbonate >= 41 & min_bicarbonate >= 52), min_bicarbonate_ap_ii := 3]
+         ((min_bicarbonate >= 15 & min_bicarbonate < 18) |
+            (min_bicarbonate >= 41 & min_bicarbonate < 52)), min_bicarbonate_ap_ii := 3]
   data[is.na(min_ph) & (min_bicarbonate < 15 | min_bicarbonate >= 52), min_bicarbonate_ap_ii := 4]
 
   data[is.na(max_ph) & (max_bicarbonate >= 22 & max_bicarbonate < 32), max_bicarbonate_ap_ii := 0]
   data[is.na(max_ph) & (max_bicarbonate >= 32 & max_bicarbonate < 41), max_bicarbonate_ap_ii := 1]
   data[is.na(max_ph) & (max_bicarbonate >= 18 & max_bicarbonate < 22), max_bicarbonate_ap_ii := 2]
   data[is.na(max_ph) &
-    (max_bicarbonate >= 15 & max_bicarbonate >= 18) |
-    (max_bicarbonate >= 41 & max_bicarbonate >= 52), max_bicarbonate_ap_ii := 3]
+         ((max_bicarbonate >= 15 & max_bicarbonate < 18) |
+            (max_bicarbonate >= 41 & max_bicarbonate < 52)), max_bicarbonate_ap_ii := 3]
   data[is.na(max_ph) & (max_bicarbonate < 15 | max_bicarbonate >= 52), max_bicarbonate_ap_ii := 4]
 
   ##### sodium
   data[(min_sodium >= 130 & min_sodium < 150), min_sodium_ap_ii := 0]
   data[(min_sodium >= 150 & min_sodium < 155), min_sodium_ap_ii := 1]
   data[(min_sodium >= 155 & min_sodium < 160) |
-    (min_sodium >= 120 & min_sodium < 130), min_sodium_ap_ii := 2]
+         (min_sodium >= 120 & min_sodium < 130), min_sodium_ap_ii := 2]
   data[(min_sodium >= 160 & min_sodium < 180) |
-    (min_sodium >= 111 & min_sodium < 120), min_sodium_ap_ii := 3]
+         (min_sodium >= 111 & min_sodium < 120), min_sodium_ap_ii := 3]
   data[(min_sodium >= 180 | min_sodium < 111), min_sodium_ap_ii := 4]
 
   data[(max_sodium >= 130 & max_sodium < 150), max_sodium_ap_ii := 0]
   data[(max_sodium >= 150 & max_sodium < 155), max_sodium_ap_ii := 1]
   data[(max_sodium >= 155 & max_sodium < 160) |
-    (max_sodium >= 120 & max_sodium < 130), max_sodium_ap_ii := 2]
+         (max_sodium >= 120 & max_sodium < 130), max_sodium_ap_ii := 2]
   data[(max_sodium >= 160 & max_sodium < 180) |
-    (max_sodium >= 111 & max_sodium < 120), max_sodium_ap_ii := 3]
+         (max_sodium >= 111 & max_sodium < 120), max_sodium_ap_ii := 3]
   data[(max_sodium >= 180 | max_sodium < 111), max_sodium_ap_ii := 4]
 
   #### potassium
   data[(min_potassium >= 3.5 & min_potassium < 5.5), min_potassium_ap_ii := 0]
   data[(min_potassium >= 5.5 & min_potassium < 6) |
-    (min_potassium >= 3 & min_potassium < 3.5), min_potassium_ap_ii := 1]
+         (min_potassium >= 3 & min_potassium < 3.5), min_potassium_ap_ii := 1]
   data[(min_potassium >= 2.5 & min_potassium < 3), min_potassium_ap_ii := 2]
   data[(min_potassium >= 6 & min_potassium < 7), min_potassium_ap_ii := 3]
   data[(min_potassium >= 7 | min_potassium < 2.5), min_potassium_ap_ii := 4]
 
   data[(max_potassium >= 3.5 & max_potassium < 5.5), max_potassium_ap_ii := 0]
   data[(max_potassium >= 5.5 & max_potassium < 6) |
-    (max_potassium >= 3 & max_potassium < 3.5), max_potassium_ap_ii := 1]
+         (max_potassium >= 3 & max_potassium < 3.5), max_potassium_ap_ii := 1]
   data[(max_potassium >= 2.5 & max_potassium < 3), max_potassium_ap_ii := 2]
   data[(max_potassium >= 6 & max_potassium < 7), max_potassium_ap_ii := 3]
   data[(max_potassium >= 7 | max_potassium < 2.5), max_potassium_ap_ii := 4]
@@ -611,8 +641,8 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
 
   ### The creat score is doubled if there was renal failure.
   data <- renal_failure(data)
-  data[renal_failure == 1, min_creat_ap_ii * 2]
-  data[renal_failure == 1, max_creat_ap_ii * 2]
+  data[renal_failure == 1, min_creat_ap_ii := min_creat_ap_ii * 2]
+  data[renal_failure == 1, max_creat_ap_ii := max_creat_ap_ii * 2]
 
   #### Age
   data[age < 45, age_ap_ii := 0]
@@ -635,21 +665,21 @@ calculate_apache_ii_score <- function(data, imputation = "normal") {
   ### Getting the worst score for each component and adding to get total APACHE II score.
   ### If either max or min is missing, just using the other.
   data[, (total_variable) :=
-    pmax(min_temp_ap_ii, max_temp_ap_ii, na.rm = TRUE) +
-    pmax(min_wcc_ap_ii, max_wcc_ap_ii, na.rm = TRUE) +
-    pmax(min_map_ap_ii, max_map_ap_ii, na.rm = TRUE) + aado2_ap_ii +
-    pmax(min_hematocrit_ap_ii, max_hematocrit_ap_ii, na.rm = TRUE) +
-    pmax(min_hr_ap_ii, max_hr_ap_ii, na.rm = TRUE) +
-    pmax(min_rr_ap_ii, max_rr_ap_ii, na.rm = TRUE) +
-    #### The calculation uses either pH or bicarbonate, not both.
-    #### Above, bicarbonate is only calculated if pH is missing.
-    pmax(min_ph_ap_ii, max_ph_ap_ii,
-      min_bicarbonate_ap_ii, max_bicarbonate_ap_ii,
-      na.rm = TRUE
-    ) +
-    pmax(min_sodium_ap_ii, max_sodium_ap_ii, na.rm = TRUE) +
-    pmax(min_potassium_ap_ii, max_potassium_ap_ii, na.rm = TRUE) + gcs_ap_ii +
-    pmax(min_creat_ap_ii, max_creat_ap_ii, na.rm = TRUE) + age_ap_ii + chronic_ap_ii]
+         pmax(min_temp_ap_ii, max_temp_ap_ii, na.rm = TRUE) +
+         pmax(min_wcc_ap_ii, max_wcc_ap_ii, na.rm = TRUE) +
+         pmax(min_map_ap_ii, max_map_ap_ii, na.rm = TRUE) + aado2_ap_ii +
+         pmax(min_hematocrit_ap_ii, max_hematocrit_ap_ii, na.rm = TRUE) +
+         pmax(min_hr_ap_ii, max_hr_ap_ii, na.rm = TRUE) +
+         pmax(min_rr_ap_ii, max_rr_ap_ii, na.rm = TRUE) +
+         #### The calculation uses either pH or bicarbonate, not both.
+         #### Above, bicarbonate is only calculated if pH is missing.
+         pmax(min_ph_ap_ii, max_ph_ap_ii,
+              min_bicarbonate_ap_ii, max_bicarbonate_ap_ii,
+              na.rm = TRUE
+         ) +
+         pmax(min_sodium_ap_ii, max_sodium_ap_ii, na.rm = TRUE) +
+         pmax(min_potassium_ap_ii, max_potassium_ap_ii, na.rm = TRUE) + gcs_ap_ii +
+         pmax(min_creat_ap_ii, max_creat_ap_ii, na.rm = TRUE) + age_ap_ii + chronic_ap_ii]
 
   ### Deleting the intermediate variables so the dataset is not too long.
   delete_cols <- c(

@@ -2,23 +2,26 @@
 % Please edit documentation in R/construct_query_functions.R
 \name{omop_connect}
 \alias{omop_connect}
-\title{Create a connection object to on OMOP compliant database.}
+\title{Create a connection to an OMOP-compliant database.}
 \usage{
 omop_connect(driver, host, dbname, port, user, password)
 }
 \arguments{
-\item{driver}{driver eg. "SQL Server", "PostgreSQL", etc.}
+\item{driver}{Driver name: "PostgreSQL" or a driver string for odbc.}
 
-\item{host}{host/server name}
+\item{host}{Host/server name.}
 
-\item{dbname}{name of database in server}
+\item{dbname}{Database name.}
 
-\item{port}{database port}
+\item{port}{Port number.}
 
-\item{user}{username}
+\item{user}{Username.}
 
-\item{password}{password}
+\item{password}{Password.}
+}
+\value{
+A DBI connection object.
 }
 \description{
-Create a connection object to on OMOP compliant database.
+Create a connection to an OMOP-compliant database.
 }
