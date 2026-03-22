@@ -23,3 +23,11 @@ Does NOT handle special cases (AaDO2, GCS, creatinine doubling, chronic health,
 bicarbonate/pH fallback, mechanical ventilation) — those stay in the
 score-specific functions.
 }
+\section{Ordering}{
+
+Scoring rules are applied in CSV row order. If a value matches multiple
+ranges (which should not happen if ranges are non-overlapping), the last
+match wins. The function checks for overlapping ranges on load and warns
+if any are detected.
+}
+

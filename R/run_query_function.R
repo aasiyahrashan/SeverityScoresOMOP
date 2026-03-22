@@ -143,10 +143,11 @@ pivot_long_to_wide <- function(long_dt, concept_map) {
 
   key_cols <- c("person_id", "icu_admission_datetime", "time_in_icu", "short_name")
   agg <- mapped[,
-                .(min_val = min(min_val, na.rm = TRUE),
-                  max_val = max(max_val, na.rm = TRUE),
+                .(min_val = if (all(is.na(min_val))) NA_real_ else min(min_val, na.rm = TRUE),
+                  max_val = if (all(is.na(max_val))) NA_real_ else max(max_val, na.rm = TRUE),
                   unit_name = unit_name[!is.na(unit_name)][1]),
                 by = key_cols]
+  # Belt-and-braces: catch any Inf that slipped through
   agg[is.infinite(min_val), min_val := NA_real_]
   agg[is.infinite(max_val), max_val := NA_real_]
   if (nrow(agg) == 0) return(data.table())
@@ -154,10 +155,25 @@ pivot_long_to_wide <- function(long_dt, concept_map) {
   id_cols <- c("person_id", "icu_admission_datetime", "time_in_icu")
   formula <- person_id + icu_admission_datetime + time_in_icu ~ short_name
 
-  wide_min <- dcast(agg, formula, value.var = "min_val", fun.aggregate = min, fill = NA)
-  wide_max <- dcast(agg, formula, value.var = "max_val", fun.aggregate = max, fill = NA)
+  # Use NA-safe aggregators that return NA (not Inf) for all-NA groups.
+  safe_min <- function(x) if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+  safe_max <- function(x) if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+
+  wide_min <- dcast(agg, formula, value.var = "min_val", fun.aggregate = safe_min, fill = NA)
+  wide_max <- dcast(agg, formula, value.var = "max_val", fun.aggregate = safe_max, fill = NA)
   wide_unit <- dcast(agg, formula, value.var = "unit_name",
                      fun.aggregate = function(x) x[!is.na(x)][1], fill = NA)
+
+  # Belt-and-braces: ensure no Inf values survive anywhere in the result.
+  # This catches edge cases from dcast aggregation or upstream bugs.
+  for (col in setdiff(names(wide_min), id_cols)) {
+    if (is.numeric(wide_min[[col]]))
+      set(wide_min, which(is.infinite(wide_min[[col]])), col, NA_real_)
+  }
+  for (col in setdiff(names(wide_max), id_cols)) {
+    if (is.numeric(wide_max[[col]]))
+      set(wide_max, which(is.infinite(wide_max[[col]])), col, NA_real_)
+  }
 
   short_names <- setdiff(names(wide_min), id_cols)
   setnames(wide_min, short_names, paste0("min_", short_names))
@@ -193,6 +209,13 @@ merge_admissions_and_physiology <- function(admissions, physiology_dfs) {
   for (nm in names(non_empty)) {
     dt <- as.data.table(non_empty[[nm]])
     new_cols <- setdiff(names(dt), names(result))
+    overlap_cols <- setdiff(names(dt), c(key_cols, new_cols))
+    overlap_cols <- setdiff(overlap_cols, names(spine))  # key_cols are expected overlaps
+    if (length(overlap_cols) > 0) {
+      warning("Physiology table '", nm, "' has column(s) already present from ",
+              "an earlier table: ", paste(overlap_cols, collapse = ", "),
+              ". Values from the earlier table will be kept.")
+    }
     if (length(new_cols) > 0) {
       join_cols <- c(key_cols, new_cols)
       result <- merge(result, dt[, ..join_cols], by = key_cols, all.x = TRUE)
@@ -200,6 +223,20 @@ merge_admissions_and_physiology <- function(admissions, physiology_dfs) {
   }
 
   adm_key <- c("person_id", "icu_admission_datetime")
+
+  # Check for duplicate admissions — same person + same icu_admission_datetime
+  # but different visit_detail_id. This would cause a cartesian product in the
+  # merge below, silently duplicating all physiology rows.
+  dup_adm <- admissions[, .N, by = adm_key][N > 1]
+  if (nrow(dup_adm) > 0) {
+    warning("DUPLICATE ADMISSIONS DETECTED: ", nrow(dup_adm),
+            " (person_id, icu_admission_datetime) combination(s) have multiple rows. ",
+            "This will produce a cartesian product — physiology rows will be duplicated. ",
+            "First duplicate: person_id=", dup_adm$person_id[1],
+            ", icu_admission_datetime=", dup_adm$icu_admission_datetime[1],
+            ". Check visit_detail stitching or ground truth for overlapping stays.")
+  }
+
   result <- merge(admissions, result, by = adm_key,
                   all.x = TRUE, allow.cartesian = TRUE)
   result <- result[!is.na(time_in_icu)]

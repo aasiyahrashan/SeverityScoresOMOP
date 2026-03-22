@@ -175,6 +175,12 @@ fix_implausible_values <- function(data,
 #' bicarbonate/pH fallback, mechanical ventilation) — those stay in the
 #' score-specific functions.
 #'
+#' @section Ordering:
+#' Scoring rules are applied in CSV row order. If a value matches multiple
+#' ranges (which should not happen if ranges are non-overlapping), the last
+#' match wins. The function checks for overlapping ranges on load and warns
+#' if any are detected.
+#'
 #' @param data A data.table with physiology variables.
 #' @param scoring_path Path to the scoring CSV (e.g. apache_ii_scoring.csv).
 #' @param imputation Either "normal" (missing = 0 points) or "none" (missing = NA).
@@ -185,6 +191,34 @@ fix_implausible_values <- function(data,
 apply_scoring_table <- function(data, scoring_path, imputation = "normal") {
   data <- as.data.table(data)
   scoring <- read_csv(scoring_path, show_col_types = FALSE)
+
+  # --- Validate: check for overlapping ranges within each variable ---
+  for (var in unique(scoring$variable)) {
+    var_rules <- scoring[scoring$variable == var, ]
+    for (i in seq_len(nrow(var_rules))) {
+      for (j in seq_len(nrow(var_rules))) {
+        if (i >= j) next
+        ri <- var_rules[i, ]
+        rj <- var_rules[j, ]
+        # Two ranges overlap if: lo_i < hi_j AND lo_j < hi_i
+        # (treating NA lo as -Inf and NA hi as +Inf)
+        lo_i <- if (is.na(ri$min_value)) -Inf else ri$min_value
+        hi_i <- if (is.na(ri$max_value)) Inf else ri$max_value
+        lo_j <- if (is.na(rj$min_value)) -Inf else rj$min_value
+        hi_j <- if (is.na(rj$max_value)) Inf else rj$max_value
+        if (lo_i <= hi_j && lo_j <= hi_i) {
+          # Only warn if they assign different points (same points = harmless overlap)
+          if (ri$points != rj$points) {
+            warning("Scoring CSV: overlapping ranges for '", var,
+                    "' with different point values (rows ", i, " and ", j,
+                    ": [", lo_i, ",", hi_i, "]=", ri$points,
+                    " vs [", lo_j, ",", hi_j, "]=", rj$points,
+                    "). Last match in CSV row order wins.")
+          }
+        }
+      }
+    }
+  }
 
   # Get unique variables and their score column names
   score_variables <- scoring[, c("variable", "use_min_or_max")] |> unique()
