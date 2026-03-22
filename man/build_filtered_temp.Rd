@@ -31,7 +31,7 @@ with numeric variables.
 }
 \details{
 When multiple filter types exist (direct IDs, ancestor subquery,
-string_resolved_ids), uses UNION ALL instead of OR. This prevents
+string_resolved_ids), uses UNION instead of OR. This prevents
 Postgres from falling back to sequential scans when it can't optimise
 an OR across different filter strategies (e.g. IN-list vs subquery).
 }

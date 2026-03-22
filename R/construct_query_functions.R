@@ -88,6 +88,7 @@ age_query <- function(age_method) {
   }
 }
 
+
 #' Build COUNT(CASE WHEN ...) expressions for non-numeric variables.
 #'
 #' Handles value_as_concept_id, concept_name, concept_code,

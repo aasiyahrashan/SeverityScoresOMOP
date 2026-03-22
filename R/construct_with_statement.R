@@ -19,7 +19,7 @@
 #' with numeric variables.
 #'
 #' When multiple filter types exist (direct IDs, ancestor subquery,
-#' string_resolved_ids), uses UNION ALL instead of OR. This prevents
+#' string_resolved_ids), uses UNION instead of OR. This prevents
 #' Postgres from falling back to sequential scans when it can't optimise
 #' an OR across different filter strategies (e.g. IN-list vs subquery).
 #'
@@ -109,7 +109,7 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names,
 
   # --- Build the CREATE TEMP TABLE statement ---
   # Single filter type: simple WHERE clause.
-  # Multiple filter types: UNION ALL to let Postgres use indexes per branch.
+  # Multiple filter types: UNION to let Postgres use indexes per branch.
   # OR across different filter strategies (IN-list vs subquery) causes Postgres 9
   # to fall back to sequential scans.
 
@@ -131,11 +131,11 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names,
       "CREATE TEMP TABLE {temp_name} AS\n",
       build_select(where_exprs[1]))
   } else {
-    # UNION ALL: one SELECT per filter type
+    # UNION: one SELECT per filter type
     selects <- vapply(where_exprs, build_select, character(1))
     create_sql <- glue(
       "CREATE TEMP TABLE {temp_name} AS\n",
-      paste(selects, collapse = "\nUNION ALL\n"))
+      paste(selects, collapse = "\nUNION\n"))
   }
 
   c(glue("DROP TABLE IF EXISTS {temp_name}"),
@@ -410,7 +410,7 @@ build_drug_statements <- function(concepts, variable_names,
     selects <- vapply(where_parts, drg_select, character(1))
     drg_create <- glue(
       "CREATE TEMP TABLE drg_filtered_temp AS\n",
-      paste(selects, collapse = "\nUNION ALL\n"))
+      paste(selects, collapse = "\nUNION\n"))
   }
 
   batch_stmts <- c(batch_stmts,
