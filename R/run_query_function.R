@@ -241,16 +241,25 @@ normalise_concepts_columns <- function(concepts) {
 
 #' Resolve concept_name/concept_code searches to numeric concept_ids.
 #'
-#' Queries the concept table once for all string search terms, then replaces
-#' string search rows in the concepts dataframe with regular concept_id rows.
-#' After this, no downstream code needs to handle string searches.
+#' Queries the concept table once for all string search terms, then:
+#'   1. Creates a temp table (string_resolved_ids) with columns
+#'      table_name, short_name, concept_id — persists across batches.
+#'   2. Removes string search rows from the concepts dataframe (they are
+#'      now represented in the temp table).
+#'
+#' Downstream, build_filtered_temp() adds an OR clause referencing the
+#' temp table for tables that have string search variables. The count
+#' aggregation uses the same temp table via IN (SELECT ...).
 #'
 #' @param conn DBI connection.
 #' @param concepts The concepts dataframe.
 #' @param schema OMOP schema name.
 #' @param dialect SQL dialect.
 #'
-#' @return Updated concepts dataframe with string search rows replaced.
+#' @return A list with:
+#'   \item{concepts}{Updated concepts dataframe with string search rows removed.}
+#'   \item{has_string_ids}{Logical — TRUE if string_resolved_ids temp table was created.}
+#'   \item{string_tables}{Character vector of table names that have string search variables.}
 #' @keywords internal
 resolve_string_searches <- function(conn, concepts, schema, dialect) {
 
@@ -258,9 +267,16 @@ resolve_string_searches <- function(conn, concepts, schema, dialect) {
     concepts$omop_variable %in% c("concept_name", "concept_code") &
       !is.na(concepts$omop_variable))
 
-  if (length(str_rows) == 0) return(concepts)
+  if (length(str_rows) == 0) {
+    return(list(concepts = concepts, has_string_ids = FALSE,
+                string_tables = character(0)))
+  }
 
   str_concepts <- concepts[str_rows, ]
+  warning("String searches (concept_name/concept_code) require a full scan of the concept ",
+          "table and may be slow (>60s for concept_name on large databases). ",
+          "Consider pre-resolving to concept_ids in your concepts file for better performance.",
+          call. = FALSE)
   message("  resolving ", length(str_rows), " string search term(s) against concept table...")
   t0 <- Sys.time()
 
@@ -280,13 +296,13 @@ resolve_string_searches <- function(conn, concepts, schema, dialect) {
           round(difftime(Sys.time(), t0, units = "secs"), 1), "s)")
 
   if (nrow(resolved) == 0) {
-    # No matches — remove string search rows entirely
-    return(concepts[-str_rows, ])
+    return(list(concepts = concepts[-str_rows, ], has_string_ids = FALSE,
+                string_tables = character(0)))
   }
 
-  # For each string search short_name, find which resolved concept_ids match
+  # For each string search row, find which resolved concept_ids match
   # that specific search term (not all resolved ids)
-  new_rows_list <- list()
+  id_rows <- list()
   for (i in seq_len(nrow(str_concepts))) {
     row <- str_concepts[i, ]
     col <- row$omop_variable  # "concept_name" or "concept_code"
@@ -296,21 +312,49 @@ resolve_string_searches <- function(conn, concepts, schema, dialect) {
       grepl(search_term, tolower(resolved[[col]]), fixed = TRUE)]
 
     if (length(matching_ids) > 0) {
-      new <- row[rep(1, length(matching_ids)), ]
-      new$concept_id <- as.character(matching_ids)
-      new$omop_variable <- NA_character_  # now a plain count-by-concept-id
-      new_rows_list[[length(new_rows_list) + 1]] <- new
+      id_rows[[length(id_rows) + 1]] <- data.frame(
+        table_name = row$table,
+        short_name = row$short_name,
+        concept_id = as.integer(matching_ids),
+        stringsAsFactors = FALSE)
     }
   }
 
-  if (length(new_rows_list) > 0) {
-    expanded <- do.call(rbind, new_rows_list)
-    concepts <- rbind(concepts[-str_rows, ], expanded)
-  } else {
-    concepts <- concepts[-str_rows, ]
+  if (length(id_rows) == 0) {
+    return(list(concepts = concepts[-str_rows, ], has_string_ids = FALSE,
+                string_tables = character(0)))
   }
 
-  concepts
+  all_ids <- do.call(rbind, id_rows)
+  string_tables <- unique(all_ids$table_name)
+
+  # Build table -> unique short_names mapping for count query generation
+  string_info <- tapply(all_ids$short_name, all_ids$table_name,
+                        function(x) unique(x), simplify = FALSE)
+  string_info <- as.list(string_info)
+
+  # Create temp table with resolved IDs
+  drop_temp_table(conn, "string_resolved_ids", dialect)
+  dbExecute(conn, paste0(
+    "CREATE TEMP TABLE string_resolved_ids (",
+    "table_name TEXT, short_name TEXT, concept_id INT)"))
+
+  # Insert in batches to avoid huge SQL strings
+  batch_sz <- 5000
+  for (start in seq(1, nrow(all_ids), by = batch_sz)) {
+    end <- min(start + batch_sz - 1, nrow(all_ids))
+    chunk <- all_ids[start:end, ]
+    vals <- glue_collapse(
+      glue("('{chunk$table_name}', '{chunk$short_name}', {chunk$concept_id})"),
+      sep = ", ")
+    dbExecute(conn, glue("INSERT INTO string_resolved_ids VALUES {vals}"))
+  }
+  dbExecute(conn, "ANALYZE string_resolved_ids")
+  message("  string_resolved_ids: ", nrow(all_ids), " rows across tables: ",
+          paste(string_tables, collapse = ", "))
+
+  list(concepts = concepts[-str_rows, ], has_string_ids = TRUE,
+       string_tables = string_tables, string_info = string_info)
 }
 
 
@@ -330,7 +374,9 @@ resolve_string_searches <- function(conn, concepts, schema, dialect) {
 build_table_query_specs <- function(concepts, variable_names,
                                     window_start_point, cadence,
                                     schema, age_qry, first_window, last_window,
-                                    dialect, start_date, end_date) {
+                                    dialect, start_date, end_date,
+                                    string_tables = character(0),
+                                    string_info = list()) {
 
   specs <- list()
 
@@ -349,15 +395,23 @@ build_table_query_specs <- function(concepts, variable_names,
         !(concepts$table == "Visit Detail" & concepts$short_name != "emergency_admission"), ]
     vn <- variable_names[variable_names$table == tbl, ]
 
+    has_strings <- tbl %in% string_tables
+    tbl_string_sns <- if (has_strings && tbl %in% names(string_info)) {
+      string_info[[tbl]]
+    } else character(0)
+
     # Filtered temp table statements
-    raw_stmts <- build_filtered_temp(tbl_concepts, tbl, variable_names)
+    raw_stmts <- build_filtered_temp(tbl_concepts, tbl, variable_names,
+                                     has_string_ids = has_strings)
     rendered_stmts <- vapply(raw_stmts, render_sql, character(1))
 
     # Aggregation queries
     long_raw <- build_long_select(tbl_concepts, tbl, variable_names,
                                   window_start_point, cadence)
     count_raw <- build_count_select(tbl_concepts, tbl, variable_names,
-                                    window_start_point, cadence)
+                                    window_start_point, cadence,
+                                    has_string_ids = has_strings,
+                                    string_short_names = tbl_string_sns)
 
     specs[[vn$alias]] <- list(
       alias = vn$alias,
@@ -388,10 +442,14 @@ build_table_query_specs <- function(concepts, variable_names,
 build_drug_query_spec <- function(concepts, variable_names,
                                   window_start_point, cadence, dialect,
                                   schema, age_qry, first_window, last_window,
-                                  start_date, end_date) {
+                                  start_date, end_date,
+                                  has_string_ids = FALSE,
+                                  string_short_names = character(0)) {
 
   drug_result <- build_drug_statements(concepts, variable_names,
-                                       window_start_point, cadence, dialect)
+                                       window_start_point, cadence, dialect,
+                                       has_string_ids = has_string_ids,
+                                       string_short_names = string_short_names)
   if (is.null(drug_result)) return(NULL)
 
   render_sql <- function(sql) {
@@ -399,7 +457,6 @@ build_drug_query_spec <- function(concepts, variable_names,
                          dialect, start_date, end_date)
   }
 
-  # build_drug_statements now returns ancestor_stmts and batch_stmts separately
   list(
     ancestor_stmts = vapply(drug_result$ancestor_stmts, render_sql, character(1),
                             USE.NAMES = FALSE),
@@ -612,8 +669,15 @@ get_score_variables <- function(conn, dialect, schema,
         !is.na(concepts$omop_variable)), ]
 
   # --- Resolve string searches (once — queries concept table) ---
+  has_string_ids <- FALSE
+  string_tables <- character(0)
+  string_info <- list()
   if (!dry_run) {
-    concepts <- resolve_string_searches(conn, concepts, schema, dialect)
+    str_result <- resolve_string_searches(conn, concepts, schema, dialect)
+    concepts <- str_result$concepts
+    has_string_ids <- str_result$has_string_ids
+    string_tables <- str_result$string_tables
+    string_info <- if (has_string_ids) str_result$string_info else list()
   }
 
   # --- Build concept map for R-side pivoting ---
@@ -623,11 +687,19 @@ get_score_variables <- function(conn, dialect, schema,
   table_specs <- build_table_query_specs(
     concepts, variable_names, window_start_point, cadence,
     schema, age_qry, first_window, last_window,
-    dialect, start_date, end_date)
+    dialect, start_date, end_date,
+    string_tables = string_tables,
+    string_info = string_info)
+
+  drug_string_sns <- if (has_string_ids && "Drug" %in% names(string_info)) {
+    string_info[["Drug"]]
+  } else character(0)
 
   drug_spec <- build_drug_query_spec(
     concepts, variable_names, window_start_point, cadence, dialect,
-    schema, age_qry, first_window, last_window, start_date, end_date)
+    schema, age_qry, first_window, last_window, start_date, end_date,
+    has_string_ids = ("Drug" %in% string_tables),
+    string_short_names = drug_string_sns)
 
   # --- Create ancestor_map once (persists across batches) ---
   if (!dry_run && !is.null(drug_spec) && length(drug_spec$ancestor_stmts) > 0) {
@@ -729,6 +801,9 @@ get_score_variables <- function(conn, dialect, schema,
   drop_temp_table(conn, "person_batch", dialect)
   if (!is.null(drug_spec)) {
     drop_temp_table(conn, "ancestor_map", dialect)
+  }
+  if (has_string_ids) {
+    drop_temp_table(conn, "string_resolved_ids", dialect)
   }
 
   admissions <- rbindlist(batch_admissions, use.names = TRUE, fill = TRUE)
