@@ -551,6 +551,7 @@ test_that("build_count_select generates COUNT CASE WHEN", {
   result <- build_count_select(concepts, "Measurement", vn, "calendar_date", 24)
   expect_true(grepl("COUNT.*CASE WHEN", result))
   expect_true(grepl("count_emerg", result))
+  expect_true(grepl("time_in_icu,", result))  # comma after time_in_icu
 })
 
 
