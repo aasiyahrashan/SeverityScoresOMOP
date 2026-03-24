@@ -587,7 +587,24 @@ execute_batch <- function(conn, person_ids_batch,
       elapsed <- round(difftime(Sys.time(), t0, units = "secs"), 1)
       n_rows <- if (is.null(raw)) 0 else nrow(raw)
       message("  ", spec$alias, "_counts: ", n_rows, " rows (", elapsed, "s)")
-      if (n_rows > 0) physiology[[paste0(spec$alias, "_counts")]] <- as.data.table(raw)
+      if (n_rows > 0) {
+        physiology[[paste0(spec$alias, "_counts")]] <- as.data.table(raw)
+      } else {
+        # Query returned no rows but columns still need to exist in the final
+        # result so downstream code doesn't silently skip expected variables.
+        # Extract expected count_ column names from the SQL and add them as NA.
+        count_cols <- unique(regmatches(spec$count_sql,
+                                        gregexpr("count_[a-z0-9_]+", spec$count_sql))[[1]])
+        if (length(count_cols) > 0) {
+          empty_dt <- data.table(
+            person_id = integer(0),
+            icu_admission_datetime = character(0),
+            time_in_icu = integer(0)
+          )
+          for (col in count_cols) empty_dt[, (col) := integer(0)]
+          physiology[[paste0(spec$alias, "_counts")]] <- empty_dt
+        }
+      }
     }
   }
 
@@ -776,12 +793,35 @@ get_score_variables <- function(conn, dialect, schema,
   # --- Dry run ---
   if (dry_run) {
     message("Dry run complete.")
+
+    # Build main_query: all SQL in execution order, without patient IDs substituted.
+    # Useful for debugging — copy individual statements into a DB client with
+    # example patients substituted for @person_ids / @ground_truth_values.
+    main_query <- list()
+    main_query[["visits"]] <- pasted_visits_sql
+    for (spec in table_specs) {
+      for (i in seq_along(spec$filtered_stmts))
+        main_query[[paste0(spec$alias, "_filtered_", i)]] <- spec$filtered_stmts[[i]]
+      if (spec$long_sql  != "") main_query[[paste0(spec$alias, "_long")]]  <- spec$long_sql
+      if (spec$count_sql != "") main_query[[paste0(spec$alias, "_count")]] <- spec$count_sql
+    }
+    if (!is.null(drug_spec)) {
+      for (i in seq_along(drug_spec$ancestor_stmts))
+        main_query[[paste0("drug_ancestor_", i)]] <- drug_spec$ancestor_stmts[[i]]
+      for (i in seq_along(drug_spec$batch_stmts))
+        main_query[[paste0("drug_batch_", i)]]    <- drug_spec$batch_stmts[[i]]
+      main_query[["drug_select"]] <- drug_spec$select_sql
+    }
+    if (!is.null(gcs_sql_template)) main_query[["gcs"]] <- gcs_sql_template
+
     return(list(
-      table_specs = table_specs,
-      drug_spec = drug_spec,
-      gcs_sql_template = gcs_sql_template,
-      concept_map = concept_map,
-      concepts = concepts))
+      main_query         = main_query,
+      pasted_visits_sql  = pasted_visits_sql,
+      table_specs        = table_specs,
+      drug_spec          = drug_spec,
+      gcs_sql_template   = gcs_sql_template,
+      concept_map        = concept_map,
+      concepts           = concepts))
   }
 
   # =====================================================================
