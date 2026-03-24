@@ -26,7 +26,7 @@ test_that("basic pivot: one concept, one patient, one window", {
   long_dt <- data.table(
     person_id = 1, icu_admission_datetime = "2022-07-01",
     time_in_icu = 0, concept_id = "111",
-    min_val = 36.5, max_val = 38.0, unit_name = "degree Celsius"
+    min_val = 36.5, max_val = 38.0, unit_concept_id = "degree Celsius"
   )
   cmap <- data.table(
     concept_id = "111", short_name = "temp",
@@ -45,7 +45,7 @@ test_that("multiple concepts map to same short_name → aggregated", {
     person_id = c(1, 1), icu_admission_datetime = "2022-07-01",
     time_in_icu = c(0, 0), concept_id = c("111", "222"),
     min_val = c(36.5, 37.0), max_val = c(38.0, 39.0),
-    unit_name = c("degree Celsius", "degree Celsius")
+    unit_concept_id = c("degree Celsius", "degree Celsius")
   )
   cmap <- data.table(
     concept_id = c("111", "222"), short_name = c("temp", "temp"),
@@ -65,7 +65,7 @@ test_that("multiple patients, multiple windows → correct row count", {
     person_id = c(1, 1, 2), icu_admission_datetime = "2022-07-01",
     time_in_icu = c(0, 1, 0), concept_id = "111",
     min_val = c(36, 37, 35), max_val = c(38, 39, 36),
-    unit_name = "C"
+    unit_concept_id = "C"
   )
   cmap <- data.table(
     concept_id = "111", short_name = "temp",
@@ -81,7 +81,7 @@ test_that("concept_id not in map → dropped silently (no extra rows)", {
     person_id = 1, icu_admission_datetime = "2022-07-01",
     time_in_icu = 0, concept_id = c("111", "999"),
     min_val = c(36, 100), max_val = c(38, 200),
-    unit_name = c("C", "??")
+    unit_concept_id = c("C", "??")
   )
   cmap <- data.table(
     concept_id = "111", short_name = "temp",
@@ -99,7 +99,7 @@ test_that("all NA min_val → becomes NA (not Inf)", {
   long_dt <- data.table(
     person_id = 1, icu_admission_datetime = "2022-07-01",
     time_in_icu = 0, concept_id = "111",
-    min_val = NA_real_, max_val = NA_real_, unit_name = NA_character_
+    min_val = NA_real_, max_val = NA_real_, unit_concept_id = NA_character_
   )
   cmap <- data.table(
     concept_id = "111", short_name = "temp",
@@ -121,7 +121,7 @@ test_that("filter_col filtering works: same concept_id, different short_name", {
     person_id = c(1, 1), icu_admission_datetime = "2022-07-01",
     time_in_icu = c(0, 0), concept_id = c("111", "111"),
     min_val = c(16, 22), max_val = c(20, 28),
-    unit_name = c("bpm", "bpm"),
+    unit_concept_id = c("bpm", "bpm"),
     source_col = c("RR", "VENT_RR")
   )
   cmap <- data.table(
@@ -141,7 +141,7 @@ test_that("empty long_dt returns empty data.table", {
   long_dt <- data.table(
     person_id = integer(0), icu_admission_datetime = character(0),
     time_in_icu = integer(0), concept_id = character(0),
-    min_val = numeric(0), max_val = numeric(0), unit_name = character(0)
+    min_val = numeric(0), max_val = numeric(0), unit_concept_id = character(0)
   )
   cmap <- data.table(
     concept_id = "111", short_name = "temp",
@@ -156,7 +156,7 @@ test_that("one concept maps to two short_names (cartesian) → both columns crea
   long_dt <- data.table(
     person_id = 1, icu_admission_datetime = "2022-07-01",
     time_in_icu = 0, concept_id = "111",
-    min_val = 100, max_val = 200, unit_name = "U"
+    min_val = 100, max_val = 200, unit_concept_id = "U"
   )
   cmap <- data.table(
     concept_id = c("111", "111"),
@@ -173,12 +173,12 @@ test_that("one concept maps to two short_names (cartesian) → both columns crea
   expect_equal(result$min_var_b, 100)
 })
 
-test_that("unit_name: first non-NA is picked when multiple units exist", {
+test_that("unit_concept_id: first non-NA is picked when multiple units exist", {
   long_dt <- data.table(
     person_id = c(1, 1), icu_admission_datetime = "2022-07-01",
     time_in_icu = c(0, 0), concept_id = c("111", "222"),
     min_val = c(36, 37), max_val = c(38, 39),
-    unit_name = c(NA_character_, "degree Celsius")
+    unit_concept_id = c(NA_character_, "degree Celsius")
   )
   cmap <- data.table(
     concept_id = c("111", "222"), short_name = c("temp", "temp"),
@@ -469,7 +469,7 @@ test_that("numeric + ancestor concepts use UNION (not OR)", {
   expect_true(grepl("UNION", create_sql) || grepl("OR", create_sql))
 })
 
-test_that("numeric variables trigger unit join", {
+test_that("numeric variables select unit_concept_id but do NOT join concept for unit name", {
   concepts <- data.frame(
     table = "Measurement", short_name = "hr",
     concept_id = "111", omop_variable = "value_as_number",
@@ -479,7 +479,9 @@ test_that("numeric variables trigger unit join", {
   result <- build_filtered_temp(concepts, "Measurement", make_vn("Measurement"))
   create_sql <- result[2]
   expect_true(grepl("unit_concept_id", create_sql))
-  expect_true(grepl("unit_name", create_sql))
+  # unit name lookup now happens in R after pivoting, not via SQL JOIN
+  expect_false(grepl("unit_name", create_sql))
+  expect_false(grepl("LEFT JOIN.*concept", create_sql))
 })
 
 test_that("non-numeric-only concepts don't get unit join", {
@@ -551,7 +553,7 @@ test_that("build_count_select generates COUNT CASE WHEN", {
   result <- build_count_select(concepts, "Measurement", vn, "calendar_date", 24)
   expect_true(grepl("COUNT.*CASE WHEN", result))
   expect_true(grepl("count_emerg", result))
-  expect_true(grepl("time_in_icu\n", result))
+  expect_true(grepl("time_in_icu,", result))  # comma after time_in_icu
 })
 
 
@@ -656,7 +658,7 @@ test_that("all-NA values after dcast never produce Inf", {
     concept_id = c("111", "222"),
     min_val = c(36.5, NA_real_),
     max_val = c(38.0, NA_real_),
-    unit_name = c("C", NA_character_)
+    unit_concept_id = c("C", NA_character_)
   )
   cmap <- data.table(
     concept_id = c("111", "222"),
@@ -685,7 +687,7 @@ test_that("no Inf values anywhere in result with mixed NA/non-NA data", {
     concept_id = c("111", "111", "222"),
     min_val = c(36, NA_real_, NA_real_),
     max_val = c(38, NA_real_, NA_real_),
-    unit_name = c("C", NA_character_, NA_character_)
+    unit_concept_id = c("C", NA_character_, NA_character_)
   )
   cmap <- data.table(
     concept_id = c("111", "222"),

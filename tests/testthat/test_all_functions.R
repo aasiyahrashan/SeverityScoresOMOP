@@ -519,7 +519,7 @@ test_that("build_filtered_temp uses simple WHERE for single filter type", {
   expect_true(grepl("IN \\(4301868, 4108446\\)", create_sql))
 })
 
-test_that("build_filtered_temp adds unit join for numeric variables", {
+test_that("build_filtered_temp selects unit_concept_id but does NOT join concept for unit name", {
   concepts <- data.frame(
     table = "Measurement",
     short_name = "hr",
@@ -539,7 +539,9 @@ test_that("build_filtered_temp adds unit join for numeric variables", {
 
   result <- build_filtered_temp(concepts, "Measurement", vn)
   expect_true(grepl("unit_concept_id", result[2]))
-  expect_true(grepl("unit_name", result[2]))
+  # unit name lookup now happens in R after pivoting, not via SQL JOIN
+  expect_false(grepl("unit_name", result[2]))
+  expect_false(grepl("LEFT JOIN.*concept", result[2]))
 })
 
 

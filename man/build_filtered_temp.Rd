@@ -8,7 +8,9 @@ build_filtered_temp(
   table_concepts,
   table_name,
   variable_names,
-  has_string_ids = FALSE
+  has_string_ids = FALSE,
+  lower_date = NULL,
+  upper_date = NULL
 )
 }
 \arguments{
