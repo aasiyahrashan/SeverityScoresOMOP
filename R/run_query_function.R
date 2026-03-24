@@ -145,7 +145,7 @@ pivot_long_to_wide <- function(long_dt, concept_map) {
   agg <- mapped[,
                 .(min_val = if (all(is.na(min_val))) NA_real_ else min(min_val, na.rm = TRUE),
                   max_val = if (all(is.na(max_val))) NA_real_ else max(max_val, na.rm = TRUE),
-                  unit_name = unit_name[!is.na(unit_name)][1]),
+                  unit_concept_id = unit_concept_id[!is.na(unit_concept_id)][1]),
                 by = key_cols]
   # Belt-and-braces: catch any Inf that slipped through
   agg[is.infinite(min_val), min_val := NA_real_]
@@ -161,7 +161,7 @@ pivot_long_to_wide <- function(long_dt, concept_map) {
 
   wide_min <- dcast(agg, formula, value.var = "min_val", fun.aggregate = safe_min, fill = NA)
   wide_max <- dcast(agg, formula, value.var = "max_val", fun.aggregate = safe_max, fill = NA)
-  wide_unit <- dcast(agg, formula, value.var = "unit_name",
+  wide_unit <- dcast(agg, formula, value.var = "unit_concept_id",
                      fun.aggregate = function(x) x[!is.na(x)][1], fill = NA)
 
   # Belt-and-braces: ensure no Inf values survive anywhere in the result.
@@ -516,6 +516,58 @@ build_drug_query_spec <- function(concepts, variable_names,
 
 
 # ---------------------------------------------------------------------------
+# Unit name resolution (R-side, post-pivot)
+# ---------------------------------------------------------------------------
+
+#' Replace unit_concept_id integers in wide pivoted result with concept names.
+#'
+#' pivot_long_to_wide() produces unit_{short_name} columns containing raw
+#' unit_concept_id integers. This function queries the concept table once for
+#' all distinct IDs present, then replaces the integers with concept names.
+#' Operating on the pivoted result (~104k rows, ~20 distinct IDs) rather than
+#' the filtered temp table (21.5M rows) avoids a LEFT JOIN on every raw row.
+#'
+#' @param pivoted data.table output from pivot_long_to_wide().
+#' @param conn DBI connection.
+#' @param schema OMOP schema name.
+#' @param dialect SQL dialect.
+#' @return The same data.table with unit_ columns replaced by concept names.
+#' @import data.table
+#' @importFrom DBI dbGetQuery
+#' @importFrom glue glue glue_collapse
+#' @keywords internal
+resolve_unit_names <- function(pivoted, conn, schema, dialect) {
+  unit_cols <- grep("^unit_", names(pivoted), value = TRUE)
+  if (length(unit_cols) == 0) return(pivoted)
+
+  # Collect all distinct non-NA unit_concept_ids across all unit_ columns
+  all_ids <- unique(unlist(lapply(unit_cols, function(col) {
+    vals <- pivoted[[col]]
+    vals[!is.na(vals)]
+  })))
+  all_ids <- all_ids[!is.na(all_ids)]
+  if (length(all_ids) == 0) return(pivoted)
+
+  # Single small query against concept table
+  id_list <- glue_collapse(as.integer(all_ids), sep = ", ")
+  sql <- translate(
+    glue("SELECT concept_id, concept_name FROM {schema}.concept ",
+         "WHERE concept_id IN ({id_list})"),
+    tolower(dialect))
+  unit_map <- as.data.table(dbGetQuery(conn, sql))
+  unit_map[, concept_id := as.character(concept_id)]
+
+  # Replace integer values with names in each unit_ column
+  for (col in unit_cols) {
+    ids_char <- as.character(pivoted[[col]])
+    matched <- unit_map$concept_name[match(ids_char, unit_map$concept_id)]
+    set(pivoted, j = col, value = matched)
+  }
+  pivoted
+}
+
+
+# ---------------------------------------------------------------------------
 # Batch execution
 # ---------------------------------------------------------------------------
 
@@ -584,7 +636,10 @@ execute_batch <- function(conn, person_ids_batch,
         pivoted <- pivot_long_to_wide(as.data.table(raw), concept_map)
         message("  ", spec$alias, "_long: ", nrow(raw), " -> ",
                 nrow(pivoted), " wide rows (", elapsed, "s)")
-        if (nrow(pivoted) > 0) physiology[[paste0(spec$alias, "_long")]] <- pivoted
+        if (nrow(pivoted) > 0) {
+          pivoted <- resolve_unit_names(pivoted, conn, schema, dialect)
+          physiology[[paste0(spec$alias, "_long")]] <- pivoted
+        }
       } else {
         message("  ", spec$alias, "_long: 0 rows (", elapsed, "s)")
       }
