@@ -794,11 +794,22 @@ get_score_variables <- function(conn, dialect, schema,
   if (dry_run) {
     message("Dry run complete.")
 
-    # Build main_query: all SQL in execution order, without patient IDs substituted.
-    # Useful for debugging — copy individual statements into a DB client with
-    # example patients substituted for @person_ids / @ground_truth_values.
+    # Build main_query: all SQL fully rendered and translated, in execution order.
+    # Only @person_ids / @ground_truth_values remain unsubstituted (batch-specific).
+    # Use this for debugging — substitute example patient IDs and run directly.
+    render_sql <- function(sql) {
+      render_and_translate(sql, schema, age_qry, first_window, last_window,
+                           dialect, start_date, end_date)
+    }
+
     main_query <- list()
-    main_query[["visits"]] <- pasted_visits_sql
+    main_query[["visits"]] <- pasted_visits_sql %>%
+      render(schema = schema, age_query = age_qry,
+             first_window = first_window, last_window = last_window) %>%
+      translate(tolower(dialect)) %>%
+      render(start_date = single_quote(start_date),
+             end_date   = single_quote(end_date))
+
     for (spec in table_specs) {
       for (i in seq_along(spec$filtered_stmts))
         main_query[[paste0(spec$alias, "_filtered_", i)]] <- spec$filtered_stmts[[i]]
@@ -815,13 +826,12 @@ get_score_variables <- function(conn, dialect, schema,
     if (!is.null(gcs_sql_template)) main_query[["gcs"]] <- gcs_sql_template
 
     return(list(
-      main_query         = main_query,
-      pasted_visits_sql  = pasted_visits_sql,
-      table_specs        = table_specs,
-      drug_spec          = drug_spec,
-      gcs_sql_template   = gcs_sql_template,
-      concept_map        = concept_map,
-      concepts           = concepts))
+      main_query        = main_query,
+      table_specs       = table_specs,
+      drug_spec         = drug_spec,
+      gcs_sql_template  = gcs_sql_template,
+      concept_map       = concept_map,
+      concepts          = concepts))
   }
 
   # =====================================================================
