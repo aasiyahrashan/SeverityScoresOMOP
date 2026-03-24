@@ -421,6 +421,14 @@ build_table_query_specs <- function(concepts, variable_names,
     concepts$table != "Drug" &
       !(concepts$table == "Visit Detail" & concepts$short_name != "emergency_admission")])
 
+  # Pre-compute date bounds for the filtered temp table date pre-filter.
+  # Conservative: floor/ceiling plus ±1 day safety margin ensures no data loss.
+  # Exact window filtering still happens in the aggregation step.
+  lower_days <- floor(first_window * cadence / 24) - 1L
+  upper_days <- ceiling(last_window * cadence / 24) + 1L
+  lower_date <- format(as.Date(start_date) + lower_days, "%Y-%m-%d")
+  upper_date <- format(as.Date(end_date)   + upper_days, "%Y-%m-%d")
+
   render_sql <- function(sql) {
     render_and_translate(sql, schema, age_qry, first_window, last_window,
                          dialect, start_date, end_date)
@@ -439,7 +447,9 @@ build_table_query_specs <- function(concepts, variable_names,
 
     # Filtered temp table statements
     raw_stmts <- build_filtered_temp(tbl_concepts, tbl, variable_names,
-                                     has_string_ids = has_strings)
+                                     has_string_ids = has_strings,
+                                     lower_date = lower_date,
+                                     upper_date = upper_date)
     rendered_stmts <- vapply(raw_stmts, render_sql, character(1))
 
     # Aggregation queries
@@ -794,22 +804,11 @@ get_score_variables <- function(conn, dialect, schema,
   if (dry_run) {
     message("Dry run complete.")
 
-    # Build main_query: all SQL fully rendered and translated, in execution order.
-    # Only @person_ids / @ground_truth_values remain unsubstituted (batch-specific).
-    # Use this for debugging — substitute example patient IDs and run directly.
-    render_sql <- function(sql) {
-      render_and_translate(sql, schema, age_qry, first_window, last_window,
-                           dialect, start_date, end_date)
-    }
-
+    # Build main_query: all SQL in execution order, without patient IDs substituted.
+    # Useful for debugging — copy individual statements into a DB client with
+    # example patients substituted for @person_ids / @ground_truth_values.
     main_query <- list()
-    main_query[["visits"]] <- pasted_visits_sql %>%
-      render(schema = schema, age_query = age_qry,
-             first_window = first_window, last_window = last_window) %>%
-      translate(tolower(dialect)) %>%
-      render(start_date = single_quote(start_date),
-             end_date   = single_quote(end_date))
-
+    main_query[["visits"]] <- pasted_visits_sql
     for (spec in table_specs) {
       for (i in seq_along(spec$filtered_stmts))
         main_query[[paste0(spec$alias, "_filtered_", i)]] <- spec$filtered_stmts[[i]]
@@ -826,12 +825,13 @@ get_score_variables <- function(conn, dialect, schema,
     if (!is.null(gcs_sql_template)) main_query[["gcs"]] <- gcs_sql_template
 
     return(list(
-      main_query        = main_query,
-      table_specs       = table_specs,
-      drug_spec         = drug_spec,
-      gcs_sql_template  = gcs_sql_template,
-      concept_map       = concept_map,
-      concepts          = concepts))
+      main_query         = main_query,
+      pasted_visits_sql  = pasted_visits_sql,
+      table_specs        = table_specs,
+      drug_spec          = drug_spec,
+      gcs_sql_template   = gcs_sql_template,
+      concept_map        = concept_map,
+      concepts           = concepts))
   }
 
   # =====================================================================

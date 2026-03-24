@@ -33,7 +33,8 @@
 #' @importFrom glue glue glue_collapse
 #' @keywords internal
 build_filtered_temp <- function(table_concepts, table_name, variable_names,
-                                has_string_ids = FALSE) {
+                                has_string_ids = FALSE,
+                                lower_date = NULL, upper_date = NULL) {
 
   vn <- variable_names[variable_names$table == table_name, ]
   temp_name <- paste0(vn$alias, "_filtered_temp")
@@ -52,6 +53,18 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names,
       "\n      {datetime_expr} AS table_datetime")
   } else {
     date_select <- ""
+  }
+
+  # --- Optional date pre-filter ---
+  # Filters on the mandatory date column (never NULL) using pre-computed bounds.
+  # Bounds are computed in R with a ±1 day safety margin so no data is lost —
+  # the exact window filter in the aggregation step enforces the real bounds.
+  # Filtering on the raw date column (not COALESCEd) keeps the expression simple.
+  date_filter <- ""
+  if (has_dates && !is.null(lower_date) && !is.null(upper_date)) {
+    date_filter <- glue(
+      "\n      AND t.{vn$start_date_var} >= '{lower_date}'",
+      "\n      AND t.{vn$start_date_var} <= '{upper_date}'")
   }
 
   # --- Separate filter types ---
@@ -119,7 +132,7 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names,
       "      {select_list}{date_select}{unit_select}\n",
       "    FROM @schema.{vn$db_table_name} t{unit_join}\n",
       "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
-      "      AND {where_clause}")
+      "      AND {where_clause}{date_filter}")
   }
 
   if (length(where_exprs) == 0) {
@@ -257,6 +270,7 @@ build_count_select <- function(table_concepts, table_name, variable_names,
 
   all_variables <- paste0(variables, string_variables)
   if (all_variables == "") return("")
+  all_variables <- sub("^\\s*,\\s*", "", all_variables)
 
   join_condition <- if (table_name == "Visit Detail") {
     glue("ON adm.person_id = t.person_id\n",
@@ -273,7 +287,7 @@ build_count_select <- function(table_concepts, table_name, variable_names,
     "SELECT\n",
     "       t.person_id,\n",
     "       adm.icu_admission_datetime,\n",
-    "       {window_expr} AS time_in_icu\n",
+    "       {window_expr} AS time_in_icu, \n",
     "       {all_variables}\n",
     "    FROM adm_multi_temp adm\n",
     "    INNER JOIN {filtered_temp} t\n",
