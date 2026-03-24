@@ -145,7 +145,7 @@ pivot_long_to_wide <- function(long_dt, concept_map) {
   agg <- mapped[,
                 .(min_val = if (all(is.na(min_val))) NA_real_ else min(min_val, na.rm = TRUE),
                   max_val = if (all(is.na(max_val))) NA_real_ else max(max_val, na.rm = TRUE),
-                  unit_name = unit_name[!is.na(unit_name)][1]),
+                  unit_concept_id = unit_concept_id[!is.na(unit_concept_id)][1]),
                 by = key_cols]
   # Belt-and-braces: catch any Inf that slipped through
   agg[is.infinite(min_val), min_val := NA_real_]
@@ -161,7 +161,7 @@ pivot_long_to_wide <- function(long_dt, concept_map) {
 
   wide_min <- dcast(agg, formula, value.var = "min_val", fun.aggregate = safe_min, fill = NA)
   wide_max <- dcast(agg, formula, value.var = "max_val", fun.aggregate = safe_max, fill = NA)
-  wide_unit <- dcast(agg, formula, value.var = "unit_name",
+  wide_unit <- dcast(agg, formula, value.var = "unit_concept_id",
                      fun.aggregate = function(x) x[!is.na(x)][1], fill = NA)
 
   # Belt-and-braces: ensure no Inf values survive anywhere in the result.
@@ -421,6 +421,14 @@ build_table_query_specs <- function(concepts, variable_names,
     concepts$table != "Drug" &
       !(concepts$table == "Visit Detail" & concepts$short_name != "emergency_admission")])
 
+  # Pre-compute date bounds for the filtered temp table date pre-filter.
+  # Conservative: floor/ceiling plus ±1 day safety margin ensures no data loss.
+  # Exact window filtering still happens in the aggregation step.
+  lower_days <- floor(first_window * cadence / 24) - 1L
+  upper_days <- ceiling(last_window * cadence / 24) + 1L
+  lower_date <- format(as.Date(start_date) + lower_days, "%Y-%m-%d")
+  upper_date <- format(as.Date(end_date)   + upper_days, "%Y-%m-%d")
+
   render_sql <- function(sql) {
     render_and_translate(sql, schema, age_qry, first_window, last_window,
                          dialect, start_date, end_date)
@@ -439,7 +447,9 @@ build_table_query_specs <- function(concepts, variable_names,
 
     # Filtered temp table statements
     raw_stmts <- build_filtered_temp(tbl_concepts, tbl, variable_names,
-                                     has_string_ids = has_strings)
+                                     has_string_ids = has_strings,
+                                     lower_date = lower_date,
+                                     upper_date = upper_date)
     rendered_stmts <- vapply(raw_stmts, render_sql, character(1))
 
     # Aggregation queries
@@ -502,6 +512,58 @@ build_drug_query_spec <- function(concepts, variable_names,
     select_sql = render_sql(drug_result$select_sql),
     temp_tables = c("drg_filtered_temp", "drg_tagged")
   )
+}
+
+
+# ---------------------------------------------------------------------------
+# Unit name resolution (R-side, post-pivot)
+# ---------------------------------------------------------------------------
+
+#' Replace unit_concept_id integers in wide pivoted result with concept names.
+#'
+#' pivot_long_to_wide() produces unit_{short_name} columns containing raw
+#' unit_concept_id integers. This function queries the concept table once for
+#' all distinct IDs present, then replaces the integers with concept names.
+#' Operating on the pivoted result (~104k rows, ~20 distinct IDs) rather than
+#' the filtered temp table (21.5M rows) avoids a LEFT JOIN on every raw row.
+#'
+#' @param pivoted data.table output from pivot_long_to_wide().
+#' @param conn DBI connection.
+#' @param schema OMOP schema name.
+#' @param dialect SQL dialect.
+#' @return The same data.table with unit_ columns replaced by concept names.
+#' @import data.table
+#' @importFrom DBI dbGetQuery
+#' @importFrom glue glue glue_collapse
+#' @keywords internal
+resolve_unit_names <- function(pivoted, conn, schema, dialect) {
+  unit_cols <- grep("^unit_", names(pivoted), value = TRUE)
+  if (length(unit_cols) == 0) return(pivoted)
+
+  # Collect all distinct non-NA unit_concept_ids across all unit_ columns
+  all_ids <- unique(unlist(lapply(unit_cols, function(col) {
+    vals <- pivoted[[col]]
+    vals[!is.na(vals)]
+  })))
+  all_ids <- all_ids[!is.na(all_ids)]
+  if (length(all_ids) == 0) return(pivoted)
+
+  # Single small query against concept table
+  id_list <- glue_collapse(as.integer(all_ids), sep = ", ")
+  sql <- translate(
+    glue("SELECT concept_id, concept_name FROM {schema}.concept ",
+         "WHERE concept_id IN ({id_list})"),
+    tolower(dialect))
+  unit_map <- as.data.table(dbGetQuery(conn, sql))
+  unit_map[, concept_id := as.character(concept_id)]
+
+  # Replace integer values with names in each unit_ column
+  for (col in unit_cols) {
+    ids_char <- as.character(pivoted[[col]])
+    matched <- unit_map$concept_name[match(ids_char, unit_map$concept_id)]
+    set(pivoted, j = col, value = matched)
+  }
+  pivoted
 }
 
 
@@ -574,7 +636,10 @@ execute_batch <- function(conn, person_ids_batch,
         pivoted <- pivot_long_to_wide(as.data.table(raw), concept_map)
         message("  ", spec$alias, "_long: ", nrow(raw), " -> ",
                 nrow(pivoted), " wide rows (", elapsed, "s)")
-        if (nrow(pivoted) > 0) physiology[[paste0(spec$alias, "_long")]] <- pivoted
+        if (nrow(pivoted) > 0) {
+          pivoted <- resolve_unit_names(pivoted, conn, schema, dialect)
+          physiology[[paste0(spec$alias, "_long")]] <- pivoted
+        }
       } else {
         message("  ", spec$alias, "_long: 0 rows (", elapsed, "s)")
       }
@@ -794,22 +859,11 @@ get_score_variables <- function(conn, dialect, schema,
   if (dry_run) {
     message("Dry run complete.")
 
-    # Build main_query: all SQL fully rendered and translated, in execution order.
-    # Only @person_ids / @ground_truth_values remain unsubstituted (batch-specific).
-    # Use this for debugging — substitute example patient IDs and run directly.
-    render_sql <- function(sql) {
-      render_and_translate(sql, schema, age_qry, first_window, last_window,
-                           dialect, start_date, end_date)
-    }
-
+    # Build main_query: all SQL in execution order, without patient IDs substituted.
+    # Useful for debugging — copy individual statements into a DB client with
+    # example patients substituted for @person_ids / @ground_truth_values.
     main_query <- list()
-    main_query[["visits"]] <- pasted_visits_sql %>%
-      render(schema = schema, age_query = age_qry,
-             first_window = first_window, last_window = last_window) %>%
-      translate(tolower(dialect)) %>%
-      render(start_date = single_quote(start_date),
-             end_date   = single_quote(end_date))
-
+    main_query[["visits"]] <- pasted_visits_sql
     for (spec in table_specs) {
       for (i in seq_along(spec$filtered_stmts))
         main_query[[paste0(spec$alias, "_filtered_", i)]] <- spec$filtered_stmts[[i]]
@@ -826,12 +880,13 @@ get_score_variables <- function(conn, dialect, schema,
     if (!is.null(gcs_sql_template)) main_query[["gcs"]] <- gcs_sql_template
 
     return(list(
-      main_query        = main_query,
-      table_specs       = table_specs,
-      drug_spec         = drug_spec,
-      gcs_sql_template  = gcs_sql_template,
-      concept_map       = concept_map,
-      concepts          = concepts))
+      main_query         = main_query,
+      pasted_visits_sql  = pasted_visits_sql,
+      table_specs        = table_specs,
+      drug_spec          = drug_spec,
+      gcs_sql_template   = gcs_sql_template,
+      concept_map        = concept_map,
+      concepts           = concepts))
   }
 
   # =====================================================================

@@ -33,7 +33,8 @@
 #' @importFrom glue glue glue_collapse
 #' @keywords internal
 build_filtered_temp <- function(table_concepts, table_name, variable_names,
-                                has_string_ids = FALSE) {
+                                has_string_ids = FALSE,
+                                lower_date = NULL, upper_date = NULL) {
 
   vn <- variable_names[variable_names$table == table_name, ]
   temp_name <- paste0(vn$alias, "_filtered_temp")
@@ -52,6 +53,23 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names,
       "\n      {datetime_expr} AS table_datetime")
   } else {
     date_select <- ""
+  }
+
+  # --- Optional date pre-filter ---
+  # Filters on the mandatory date column (never NULL) using pre-computed bounds.
+  # The bounds are not patient-specific — they are computed from the study
+  # start_date/end_date expanded by the window offsets. This means the filter
+  # includes all measurements that could possibly fall within any patient's
+  # window: the earliest possible measurement is start_date + first_window,
+  # and the latest is end_date + last_window. A ±1 day safety margin is added
+  # to absorb timezone edge cases and date/datetime mismatches.
+  # Exact per-patient window filtering still happens in the aggregation step.
+  # Filtering on the raw date column (not COALESCEd) keeps the expression simple.
+  date_filter <- ""
+  if (has_dates && !is.null(lower_date) && !is.null(upper_date)) {
+    date_filter <- glue(
+      "\n      AND t.{vn$start_date_var} >= '{lower_date}'",
+      "\n      AND t.{vn$start_date_var} <= '{upper_date}'")
   }
 
   # --- Separate filter types ---
@@ -99,13 +117,9 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names,
 
   unit_join <- ""
   unit_select <- ""
-  if (has_numeric) {
-    unit_join <- paste0(
-      "\n    LEFT JOIN @schema.concept c_unit",
-      "\n      ON t.unit_concept_id = c_unit.concept_id",
-      "\n      AND t.unit_concept_id IS NOT NULL")
-    unit_select <- ",\n      c_unit.concept_name AS unit_name"
-  }
+  # unit_concept_id is kept as a raw integer column — the concept name lookup
+  # happens in R after pivoting, on the much smaller pivoted result (~104k rows
+  # vs 21.5M rows here). See pivot_long_to_wide() in run_query_function.R.
 
   # --- Build the CREATE TEMP TABLE statement ---
   # Single filter type: simple WHERE clause.
@@ -119,7 +133,7 @@ build_filtered_temp <- function(table_concepts, table_name, variable_names,
       "      {select_list}{date_select}{unit_select}\n",
       "    FROM @schema.{vn$db_table_name} t{unit_join}\n",
       "    WHERE t.person_id IN (SELECT person_id FROM person_batch)\n",
-      "      AND {where_clause}")
+      "      AND {where_clause}{date_filter}")
   }
 
   if (length(where_exprs) == 0) {
@@ -178,7 +192,8 @@ build_long_select <- function(table_concepts, table_name, variable_names,
     paste0(",\n      t.", filter_cols, collapse = "")
   } else ""
 
-  # unit_name is pre-joined in the filtered temp table
+  # unit_concept_id is a raw integer from the filtered temp table.
+  # Concept name lookup happens in R after pivoting.
   glue(
     "SELECT\n",
     "      t.person_id,\n",
@@ -187,7 +202,7 @@ build_long_select <- function(table_concepts, table_name, variable_names,
     "      t.{vn$concept_id_var} AS concept_id,\n",
     "      MIN(t.value_as_number) AS min_val,\n",
     "      MAX(t.value_as_number) AS max_val,\n",
-    "      MIN(t.unit_name) AS unit_name{extra_select}\n",
+    "      MIN(t.unit_concept_id) AS unit_concept_id{extra_select}\n",
     "    FROM adm_multi_temp adm\n",
     "    INNER JOIN {filtered_temp} t\n",
     "      ON adm.person_id = t.person_id\n",
@@ -257,6 +272,7 @@ build_count_select <- function(table_concepts, table_name, variable_names,
 
   all_variables <- paste0(variables, string_variables)
   if (all_variables == "") return("")
+  all_variables <- sub("^\\s*,\\s*", "", all_variables)
 
   join_condition <- if (table_name == "Visit Detail") {
     glue("ON adm.person_id = t.person_id\n",
@@ -273,7 +289,7 @@ build_count_select <- function(table_concepts, table_name, variable_names,
     "SELECT\n",
     "       t.person_id,\n",
     "       adm.icu_admission_datetime,\n",
-    "       {window_expr} AS time_in_icu\n",
+    "       {window_expr} AS time_in_icu, \n",
     "       {all_variables}\n",
     "    FROM adm_multi_temp adm\n",
     "    INNER JOIN {filtered_temp} t\n",
