@@ -17,3 +17,18 @@ ph,,6.1,9
 sbp,,20,299
 dbp,,0,200
 map,,6,233
+haemoglobin,gram per deciliter,5.4,18.5
+ETCO2,kilopascal,0,20
+pip,centimeter watercolumn,0,50
+albumin,gram per liter,34,54
+alt,international unit per liter,1,9999
+ast,international unit per liter,1,9999
+glucose,millimole per liter,0.01,60
+lactate,millimole per liter,0,40
+lymphocytes,billion per liter,0,999.9
+neutrophils,billion per liter,0,999.9
+ferritin,microgram per liter,1,99999
+tidal_volume,milliliter,1,5000
+troponin,nanogram per liter,0,10000
+crp,milligram per liter,1,999
+peep,centimeter watercolumn,0,20
