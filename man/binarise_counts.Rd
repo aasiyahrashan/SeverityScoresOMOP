@@ -4,10 +4,13 @@
 \alias{binarise_counts}
 \title{Convert count columns to binary (0/1) indicator columns.}
 \usage{
-binarise_counts(data, drop_counts = TRUE)
+binarise_counts(data, na_to_zero = FALSE, drop_counts = TRUE)
 }
 \arguments{
 \item{data}{A data.frame or data.table.}
+
+\item{na_to_zero}{If TRUE, NA counts are converted to 0 in the binary column.
+Default is FALSE (NA counts remain NA).}
 
 \item{drop_counts}{If TRUE (default), removes the original count_ columns
 after creating the binary versions.}
@@ -19,7 +22,7 @@ The data.table with binary indicator columns added.
 Finds all columns starting with \code{count_}, creates a new column
 with the \code{count_} prefix stripped (e.g. \code{count_emergency_admission}
 becomes \code{emergency_admission}), and sets it to 1 if the count > 0, else 0.
-NA counts remain NA.
+NA counts remain NA by default; set \code{na_to_zero = TRUE} to treat them as 0.
 }
 \details{
 If a column with the target name already exists, it is overwritten with

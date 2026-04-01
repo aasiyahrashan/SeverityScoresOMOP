@@ -74,47 +74,46 @@ total_gcs <- function(data) {
 #' Finds all columns starting with \code{count_}, creates a new column
 #' with the \code{count_} prefix stripped (e.g. \code{count_emergency_admission}
 #' becomes \code{emergency_admission}), and sets it to 1 if the count > 0, else 0.
-#' NA counts remain NA.
+#' NA counts remain NA by default; set \code{na_to_zero = TRUE} to treat them as 0.
 #'
 #' If a column with the target name already exists, it is overwritten with
 #' a warning.
 #'
 #' @param data A data.frame or data.table.
+#' @param na_to_zero If TRUE, NA counts are converted to 0 in the binary column.
+#'   Default is FALSE (NA counts remain NA).
 #' @param drop_counts If TRUE (default), removes the original count_ columns
 #'   after creating the binary versions.
 #'
 #' @return The data.table with binary indicator columns added.
 #' @import data.table
 #' @export
-binarise_counts <- function(data, drop_counts = TRUE) {
+binarise_counts <- function(data, na_to_zero = FALSE, drop_counts = TRUE) {
   data <- as.data.table(data)
-
   count_cols <- grep("^count_", names(data), value = TRUE)
   if (length(count_cols) == 0) {
     message("No count_ columns found.")
     return(data)
   }
-
   binary_names <- sub("^count_", "", count_cols)
-
-  # Warn about overwrites
   existing <- intersect(binary_names, names(data))
   if (length(existing) > 0) {
     warning("Overwriting existing column(s): ",
             paste(existing, collapse = ", "))
   }
-
   for (i in seq_along(count_cols)) {
     src <- count_cols[i]
     dst <- binary_names[i]
-    data[, (dst) := fifelse(is.na(get(src)), NA_integer_,
-                            fifelse(get(src) > 0, 1L, 0L))]
+    if (na_to_zero) {
+      data[, (dst) := fifelse(is.na(get(src)) | get(src) == 0L, 0L, 1L)]
+    } else {
+      data[, (dst) := fifelse(is.na(get(src)), NA_integer_,
+                              fifelse(get(src) > 0, 1L, 0L))]
+    }
   }
-
   if (drop_counts) {
     data[, (count_cols) := NULL]
   }
-
   data
 }
 
