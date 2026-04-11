@@ -1,34 +1,41 @@
 variable,expected_unit,min_plausible,max_plausible
-temp,degree Celsius,25,49.9
-wcc,billion per liter,0,9999
+temp,degree Celsius,25,45
+wcc,billion per liter,0,200
 fio2,ratio,0.21,1
 pao2,millimeter mercury column,20,400
-paco2,millimeter mercury column,0,376
+paco2,millimeter mercury column,0,200
 hematocrit,percent,0,100
 sodium,millimole per liter,40,260
 potassium,millimole per liter,1,9.9
-creatinine,milligram per deciliter,0.1,39
+creatinine,milligram per deciliter,0.1,25
 bicarbonate,millimole per liter,1,59
 bilirubin,milligram per deciliter,0,100
-platelet,billion per liter,0,9999
+platelet,billion per liter,0,2000
 rr,,2,79
 hr,,10,299
-ph,,6.1,9
+ph,,6,8
 sbp,,20,299
 dbp,,0,200
 map,,6,233
-haemoglobin,gram per deciliter,5.4,18.5
+haemoglobin,gram per deciliter,3,25
 ETCO2,kilopascal,0,20
 pip,centimeter watercolumn,0,50
-albumin,gram per liter,34,54
-alt,international unit per liter,1,9999
-ast,international unit per liter,1,9999
-glucose,millimole per liter,0.01,60
-lactate,millimole per liter,0,40
-lymphocytes,billion per liter,0,999.9
-neutrophils,billion per liter,0,999.9
-ferritin,microgram per liter,1,99999
-tidal_volume,milliliter,1,5000
-troponin,nanogram per liter,0,10000
-crp,milligram per liter,1,999
+albumin,gram per liter,5,60
+alt,international unit per liter,1,5000
+ast,international unit per liter,1,5000
+glucose,millimole per liter,0.5,60
+lactate,millimole per liter,0,30
+lymphocytes,billion per liter,0,100
+neutrophils,billion per liter,0,100
+ferritin,microgram per liter,1,50000
+tidal_volume,milliliter,1,1500
+troponin,nanogram per liter,0,5000
+crp,milligram per liter,1,500
 peep,centimeter watercolumn,0,20
+calcium,millimole per liter,0.5,5
+magnesium,millimole per liter,0.1,5
+phosphate,millimole per liter,0.1,10
+inr,,0.5,20
+gcs,,3,15
+age,,18,120
+hosp_to_icu_days,,0,365
