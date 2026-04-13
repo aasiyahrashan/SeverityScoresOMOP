@@ -1,10 +1,10 @@
 variable,expected_unit,min_plausible,max_plausible
 temp,degree Celsius,25,45
-wcc,billion per liter,0,200
+wcc,billion per liter,0.1,200
 fio2,ratio,0.21,1
 pao2,millimeter mercury column,20,400
-paco2,millimeter mercury column,0,200
-hematocrit,percent,0,100
+paco2,millimeter mercury column,10,200
+hematocrit,percent,5,75
 sodium,millimole per liter,40,260
 potassium,millimole per liter,1,9.9
 creatinine,milligram per deciliter,0.1,25
@@ -28,10 +28,10 @@ lactate,millimole per liter,0,30
 lymphocytes,billion per liter,0,100
 neutrophils,billion per liter,0,100
 ferritin,microgram per liter,1,50000
-tidal_volume,milliliter,1,1500
+tidal_volume,milliliter,50,2000
 troponin,nanogram per liter,0,5000
 crp,milligram per liter,1,500
-peep,centimeter watercolumn,0,20
+peep,centimeter watercolumn,0,30
 calcium,millimole per liter,0.5,5
 magnesium,millimole per liter,0.1,5
 phosphate,millimole per liter,0.1,10
@@ -39,3 +39,18 @@ inr,,0.5,20
 gcs,,3,15
 age,,18,120
 hosp_to_icu_days,,0,365
+b_natriuretic_peptide,nanogram per liter,0,35000
+bmi,kilogram per square meter,10,80
+count_diagnoses,,0,50
+creatine_kinase,international unit per liter,1,50000
+d_dimer,,0,100000
+dead_space_tidal_volume_ratio,,0,1
+f_vt,,0,200
+haemoglobin_a1c,percent,3,20
+height,centimeter,100,250
+lactate_dehydrogenase,international unit per liter,50,10000
+lvef,percent,5,80
+neutrophil_lymphocyte_ratio,,0,500
+pf_ratio,,0,700
+procalcitonin,microgram per liter,0,1000
+weight,kilogram,15,350

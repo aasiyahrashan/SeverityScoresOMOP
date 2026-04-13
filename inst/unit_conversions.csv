@@ -22,3 +22,23 @@ platelet,per liter,0.000000001,"billion per liter,thousand per cubic millimeter,
 platelet,lakhs/mm3,100,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter,lakhs/mm3,per microliter,cells per microliter",billion per liter
 bicarbonate,,,"millimole per liter,milliequivalent per liter",millimole per liter
 haemoglobin,value_gt_50,0.1,"gram per deciliter,gram per liter",gram per deciliter
+haemoglobin,gram per liter,0.1,"gram per deciliter,gram per liter",gram per deciliter
+glucose,milligram per deciliter,0.0555,"millimole per liter,milligram per deciliter",millimole per liter
+lactate,milligram per deciliter,0.111,"millimole per liter,milligram per deciliter",millimole per liter
+calcium,milligram per deciliter,0.25,"millimole per liter,milligram per deciliter",millimole per liter
+albumin,gram per deciliter,10,"gram per liter,gram per deciliter",gram per liter
+phosphate,milligram per deciliter,0.323,"millimole per liter,milligram per deciliter",millimole per liter
+magnesium,milligram per deciliter,0.411,"millimole per liter,milligram per deciliter,milliequivalent per liter",millimole per liter
+magnesium,milliequivalent per liter,0.5,"millimole per liter,milligram per deciliter,milliequivalent per liter",millimole per liter
+neutrophils,per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter",billion per liter
+neutrophils,cells per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter",billion per liter
+neutrophils,per liter,0.000000001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter",billion per liter
+lymphocytes,per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter",billion per liter
+lymphocytes,cells per cubic millimeter,0.001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter",billion per liter
+lymphocytes,per liter,0.000000001,"billion per liter,thousand per cubic millimeter,billion cells per liter,thousand per microliter,per cubic millimeter,cells per cubic millimeter,per liter",billion per liter
+troponin,nanogram per milliliter,1000,"nanogram per liter,nanogram per milliliter,microgram per liter",nanogram per liter
+troponin,microgram per liter,1000,"nanogram per liter,nanogram per milliliter,microgram per liter",nanogram per liter
+crp,milligram per deciliter,10,"milligram per liter,milligram per deciliter",milligram per liter
+b_natriuretic_peptide,picogram per milliliter,1,"nanogram per liter,picogram per milliliter",nanogram per liter
+height,inch,2.54,"centimeter,inch",centimeter
+weight,pound,0.4536,"kilogram,pound",kilogram
