@@ -18,7 +18,7 @@ sbp,,20,299
 dbp,,0,200
 map,,6,233
 haemoglobin,gram per deciliter,3,25
-ETCO2,kilopascal,0,20
+etco2,kilopascal,0,20
 pip,centimeter watercolumn,0,50
 albumin,gram per liter,5,60
 alt,international unit per liter,1,5000
@@ -37,11 +37,8 @@ magnesium,millimole per liter,0.1,5
 phosphate,millimole per liter,0.1,10
 inr,,0.5,20
 gcs,,3,15
-age,,18,120
-hosp_to_icu_days,,0,365
 b_natriuretic_peptide,nanogram per liter,0,35000
 bmi,kilogram per square meter,10,80
-count_diagnoses,,0,50
 creatine_kinase,international unit per liter,1,50000
 d_dimer,,0,100000
 dead_space_tidal_volume_ratio,,0,1
