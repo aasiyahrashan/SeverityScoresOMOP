@@ -41,7 +41,7 @@ age,,18,120
 hosp_to_icu_days,,0,365
 b_natriuretic_peptide,nanogram per liter,0,35000
 bmi,kilogram per square meter,10,80
-count_diagnoses,,0,50
+num_diagnoses,,0,50
 creatine_kinase,international unit per liter,1,50000
 d_dimer,,0,100000
 dead_space_tidal_volume_ratio,,0,1
