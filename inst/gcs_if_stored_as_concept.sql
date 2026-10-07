@@ -4,7 +4,9 @@
 --- These are the LOINC concepts with answers. https://athena.ohdsi.org/search-terms/terms/3008223
 --- https://athena.ohdsi.org/search-terms/terms/3009094
 --- https://athena.ohdsi.org/search-terms/terms/3016335
-WITH
+--- The visit SQL inserted below (paste_disjoint_icu_visits.sql, raw_visit_details.sql
+--- or ground_truth_admission_details.sql) starts with its own WITH, so this file
+--- continues its CTE list rather than opening a new one.
 
 @pasted_visits
 

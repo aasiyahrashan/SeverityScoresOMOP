@@ -835,7 +835,9 @@ get_score_variables <- function(conn, dialect, schema,
   gcs_sql_template <- if (nrow(gcs_concepts) > 0) {
     read_file(system.file("gcs_if_stored_as_concept.sql",
                           package = "SeverityScoresOMOP")) %>%
-      render(pasted_visits = pasted_visits_sql, schema = schema,
+      # The visit SQL carries @age_query; fill it before inserting.
+      render(pasted_visits = render(pasted_visits_sql, age_query = age_qry),
+             schema = schema,
              first_window = first_window, last_window = last_window,
              window_measurement = window_query(
                window_start_point, "measurement_datetime",
