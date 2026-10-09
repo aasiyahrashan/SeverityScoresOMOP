@@ -774,3 +774,11 @@ test_that("normalise_concepts_columns maps afvv to afv", {
   result <- normalise_concepts_columns(concepts)
   expect_equal(result$additional_filter_value, "test_val")
 })
+
+test_that("fix_implausible_values removes sodium outside 100-200 mmol/L", {
+  d <- data.table(min_sodium = c(99, 139, 120), max_sodium = c(139, 239, 200),
+                  unit_sodium = "millimole per liter")
+  out <- fix_implausible_values(d, variables = "sodium")
+  expect_equal(out$min_sodium, c(NA, 139, 120))
+  expect_equal(out$max_sodium, c(139, NA, 200))
+})

@@ -5,7 +5,7 @@ fio2,ratio,0.21,1
 pao2,millimeter mercury column,20,400
 paco2,millimeter mercury column,10,200
 hematocrit,percent,5,75
-sodium,millimole per liter,40,260
+sodium,millimole per liter,100,200
 potassium,millimole per liter,1,9.9
 creatinine,milligram per deciliter,0.1,25
 bicarbonate,millimole per liter,1,59
