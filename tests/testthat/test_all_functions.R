@@ -782,3 +782,12 @@ test_that("fix_implausible_values removes sodium outside 100-200 mmol/L", {
   expect_equal(out$min_sodium, c(NA, 139, 120))
   expect_equal(out$max_sodium, c(139, NA, 200))
 })
+
+test_that("fix_units converts haemoglobin g/L to g/dL once, whatever the unit label", {
+  # Was converted twice when a g/L row met both the value > 50 and the g/L rule.
+  d <- data.table(min_haemoglobin = c(120, 95, 9.5), max_haemoglobin = c(130, 100, 10),
+                  unit_haemoglobin = c("gram per liter", "gram per deciliter", "gram per deciliter"))
+  out <- fix_units(d, variables = "haemoglobin")
+  expect_equal(out$min_haemoglobin, c(12, 9.5, 9.5))
+  expect_equal(out$max_haemoglobin, c(13, 10, 10))
+})
