@@ -791,3 +791,24 @@ test_that("fix_units converts haemoglobin g/L to g/dL once, whatever the unit la
   expect_equal(out$min_haemoglobin, c(12, 9.5, 9.5))
   expect_equal(out$max_haemoglobin, c(13, 10, 10))
 })
+
+test_that("fix_units_by_site_month converts whole site-months and removes in-range values", {
+  # Site 1 March: 5 of 6 WCC values per microlitre, so the month is converted
+  # and the in-range 12 removed. Site 1 April: 1 of 6, left as it is.
+  # Site 2: platelets in lakhs.
+  d <- data.table(site = c(rep(1, 6), rep(1, 6), rep(2, 5)),
+                  date = as.Date(c(rep("2021-03-10", 6), rep("2021-04-10", 6), rep("2021-03-10", 5))),
+                  min_wcc = c(9000, 12000, 15000, 8000, 11000, 12,
+                              9, 12, 15, 8, 11, 12000,
+                              rep(NA, 5)),
+                  max_wcc = NA_real_,
+                  max_platelet = c(rep(250, 12), 1.5, 2.2, 3, 0.9, 2))
+  out <- fix_units_by_site_month(d, site_col = "site", min_values = 5)
+  expect_equal(out$min_wcc[1:6], c(9, 12, 15, 8, 11, NA))
+  expect_equal(out$min_wcc[7:12], c(9, 12, 15, 8, 11, 12000))
+  expect_equal(out$max_platelet[13:17], c(150, 220, 300, 90, 200))
+  expect_equal(out$max_platelet[1:12], rep(250, 12))
+  log <- attr(out, "site_month_unit_log")
+  expect_equal(nrow(log), 2)
+  expect_equal(log[variable == "wcc", n_removed], 1)
+})

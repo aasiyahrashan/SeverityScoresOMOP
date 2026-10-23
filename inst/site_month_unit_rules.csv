@@ -1,0 +1,4 @@
+variable,direction,threshold,conversion_factor,assumed_unit
+wcc,1,200,0.001,per microliter
+platelet,1,2000,0.001,per microliter
+platelet,-1,10,100,lakhs per cubic millimeter
