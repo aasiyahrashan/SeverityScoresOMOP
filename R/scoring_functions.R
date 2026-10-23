@@ -436,3 +436,70 @@ calculate_sofa_score <- function(data, imputation = "normal",
 
   data
 }
+
+
+#' Convert counts recorded in the wrong unit for a whole site and month.
+#'
+#' Some sites recorded white cell and platelet counts per microlitre, or
+#' platelets in lakhs per cubic millimetre, while the data dictionary gave
+#' billion per liter. When at least `trigger` of a variable's values for one
+#' site in one calendar month are beyond the rule's threshold (above for
+#' direction 1, below for direction -1), the whole site-month is assumed to be
+#' in the rule's unit and every value is multiplied by the conversion factor.
+#' Values in that site-month that were not beyond the threshold are set to NA,
+#' because their unit cannot be determined. Run after fix_units() and before
+#' fix_implausible_values().
+#'
+#' @param data A data.table with physiology variables.
+#' @param site_col Column identifying the ICU.
+#' @param date_col Column with the date of each row.
+#' @param rules_path Path to the site-month unit rules CSV.
+#' @param trigger Proportion of a site-month's values beyond the threshold
+#'   needed to convert it.
+#' @param min_values Site-months with fewer non-missing values are left as
+#'   they are.
+#'
+#' @return The data.table with converted values. Attribute
+#'   "site_month_unit_log" holds one row per converted site-month and rule:
+#'   site, month, variable, assumed_unit, n_values, n_converted, n_removed.
+#' @import data.table
+#' @importFrom readr read_csv
+#' @export
+fix_units_by_site_month <- function(data, site_col, date_col = "date",
+                                    rules_path = system.file("site_month_unit_rules.csv",
+                                                             package = "SeverityScoresOMOP"),
+                                    trigger = 0.7, min_values = 5) {
+  data <- as.data.table(data)
+  rules <- read_csv(rules_path, show_col_types = FALSE)
+  site  <- as.character(data[[site_col]])
+  month <- format(as.Date(data[[date_col]]), "%Y-%m")
+  site_month <- paste(site, month)
+  log <- list()
+
+  for (i in seq_len(nrow(rules))) {
+    rule <- rules[i, ]
+    cols <- intersect(paste0(c("min_", "max_"), rule$variable), names(data))
+
+    # min_ and max_ values together, so a site-month is judged on all its values
+    values <- unlist(data[, cols, with = FALSE], use.names = FALSE)
+    beyond <- (values - rule$threshold) * rule$direction > 0
+    groups <- data.table(site = rep(site, length(cols)), month = rep(month, length(cols)),
+                         beyond)[
+      !is.na(beyond), .(n_values = .N, n_converted = sum(beyond), n_removed = sum(!beyond)),
+      by = .(site, month)][n_values >= min_values & n_converted / n_values >= trigger]
+
+    rows <- which(site_month %in% paste(groups$site, groups$month))
+    for (col in cols) {
+      x <- data[[col]][rows]
+      set(data, i = rows, j = col,
+          value = fifelse((x - rule$threshold) * rule$direction > 0,
+                          x * rule$conversion_factor, NA_real_))
+    }
+    log[[i]] <- groups[, `:=`(variable = rule$variable, assumed_unit = rule$assumed_unit)]
+  }
+
+  log <- rbindlist(log)
+  setcolorder(log, intersect(c("site", "month", "variable", "assumed_unit"), names(log)))
+  setattr(data, "site_month_unit_log", log)
+  data
+}
