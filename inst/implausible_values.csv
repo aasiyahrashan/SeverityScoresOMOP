@@ -30,7 +30,7 @@ neutrophils,billion per liter,0,100
 ferritin,microgram per liter,1,50000
 tidal_volume,milliliter,50,2000
 troponin,nanogram per liter,0,5000
-crp,milligram per liter,1,500
+crp,milligram per liter,0,500
 peep,centimeter watercolumn,0,30
 calcium,millimole per liter,0.5,5
 magnesium,millimole per liter,0.1,5
